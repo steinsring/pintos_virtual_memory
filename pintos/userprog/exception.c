@@ -141,12 +141,6 @@ page_fault (struct intr_frame *f) {
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
 
-	if (user) {
-		thread_current ()->ss->exit_status = -1;
-		thread_exit ();
-		NOT_REACHED ();
-	}
-
 #ifdef VM
 	/* For project 3 and later. */
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
@@ -155,6 +149,12 @@ page_fault (struct intr_frame *f) {
 
 	/* Count page faults. */
 	page_fault_cnt++;
+
+	if (user) {
+		thread_current ()->ss->exit_status = -1;
+		thread_exit ();
+		NOT_REACHED ();
+	}
 
 	/* If the fault is true fault, show info and exit. */
 	printf ("Page fault at %p: %s error %s page in %s context.\n",

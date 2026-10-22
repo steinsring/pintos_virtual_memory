@@ -8,6 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
@@ -186,12 +187,14 @@ greater_priority_donor_insert_ordered (const struct list_elem *e1, const struct 
 }
 
 /* fd 정렬을 위한 비교 함수 */
+#ifdef USERPROG
 bool
 compare_fd (const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED) {
 	struct fd_entry *fd1 = list_entry(e1, struct fd_entry, elem);
 	struct fd_entry *fd2 = list_entry(e2, struct fd_entry, elem);
 	return fd1->fd < fd2->fd;
 }
+#endif
 
 void
 ready_list_sort (void) {
@@ -307,60 +310,38 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Initialize shared_status */
-	if (function == idle) {
-		thread_unblock (t);
-		yield_priority_handler(t);
-		
-		return tid;
+#ifdef USERPROG
+	if (function != idle) {
+		struct fd_entry *fde_stdin = calloc (1, sizeof *fde_stdin);
+		struct fd_entry *fde_stdout = calloc (1, sizeof *fde_stdout);
+		t->ss = malloc (sizeof *t->ss);
+		if (fde_stdin == NULL || fde_stdout == NULL || t->ss == NULL) {
+			free (fde_stdin);
+			free (fde_stdout);
+			free (t->ss);
+			palloc_free_page (t);
+			return TID_ERROR;
+		}
+
+		t->ss->tid = tid;
+		t->ss->exit_status = -1;
+		t->ss->ref_cnt = 2;
+		sema_init (&t->ss->sema, 0);
+		fde_stdin->fd = 0;
+		fde_stdin->is_stdin = true;
+		fde_stdout->fd = 1;
+		list_insert_ordered (&t->fd_table, &fde_stdin->elem, compare_fd, NULL);
+		list_insert_ordered (&t->fd_table, &fde_stdout->elem, compare_fd, NULL);
+		list_push_back (&thread_current ()->children, &t->ss->elem);
 	}
-		
-	t->ss = malloc(sizeof(struct shared_status));	
-	if (t->ss == NULL) {
-		palloc_free_page(t);
-		return TID_ERROR;
-	}	
-
-	t->ss->tid = tid;	
-	t->ss->exit_status = -1;
-	t->ss->ref_cnt = 2;	
-	sema_init(&t->ss->sema, 0);
-	
-	list_push_back(&thread_current()->children, &t->ss->elem);	
-
-	list_init (&t->fd_table);
-	/* Add to run queue. */
+#endif
+	enum intr_level old_level = intr_disable ();
 	thread_unblock (t);
-
-	/* Compare priority to current thread */
-	yield_priority_handler(t);
-
-	/* 표준 입출력 초기화*/
-	struct fd_entry *fde_stdin = malloc (sizeof (struct fd_entry));
-	if (!fde_stdin) {
-		palloc_free_page(t);
-		list_remove (&t->ss->elem);
-		free (t->ss);
-		return TID_ERROR;
-	}
-	struct fd_entry *fde_stdout = malloc (sizeof (struct fd_entry));
-	if (!fde_stdout) {
-		palloc_free_page(t);
-		list_remove (&t->ss->elem);
-		free (t->ss);
-		free (fde_stdin);
-		return TID_ERROR;
-	}
-	fde_stdin->file = NULL;
-	fde_stdout->file = NULL;
-	fde_stdin->fd = 0;
-	fde_stdout->fd = 1;
-	fde_stdin->is_stdin = true;
-	fde_stdout->is_stdin = false;
-	list_insert_ordered (&t->fd_table, &fde_stdin->elem, compare_fd, NULL);
-	list_insert_ordered (&t->fd_table, &fde_stdout->elem, compare_fd, NULL);
-
+	yield_priority_handler (t);
+	intr_set_level (old_level);
 	return tid;
 }
+
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().

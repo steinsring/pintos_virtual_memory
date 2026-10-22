@@ -53,8 +53,10 @@ process_create_initd (const char *file_name) {
 
 	int len = strcspn(file_name, " ");
 	char *name = malloc (len + 1);
-	if (name == NULL)
+	if (name == NULL) {
+		palloc_free_page (fn_copy);
 		return TID_ERROR;
+	}
 	strlcpy (name, file_name, len + 1);
 
 	/* Create a new thread to execute FILE_NAME. */
@@ -94,7 +96,12 @@ process_fork (const char *name, struct intr_frame *if_) {
 
 	sema_down (&fork_struct.sema);
 
-	return fork_struct.success ? tid : TID_ERROR;
+	/* fork실패시 자식의 종료 정보 제거 */
+	if (!fork_struct.success) {
+		process_wait (tid);
+		return TID_ERROR;
+	}
+	return tid;
 }
 
 #ifndef VM
@@ -171,6 +178,13 @@ __do_fork (void *aux) {
 		goto error;
 
 	process_activate (current);
+	if (parent->exec_file != NULL) {
+		filesys_lock_acquire ();
+		current->exec_file = file_duplicate (parent->exec_file);
+		filesys_lock_release ();
+		if (current->exec_file == NULL)
+			goto error;
+	}
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
@@ -200,14 +214,16 @@ __do_fork (void *aux) {
 		filesys_lock_acquire ();
 		if (fde->file != NULL) {
 			fde_copy->file = file_duplicate (fde->file);
+			filesys_lock_release ();
 			if (fde_copy->file == NULL) {
 				free (fde_copy);
 				goto error;
 			}
 		}
-		else
+		else {
 			fde_copy->file = NULL;
-		filesys_lock_release ();
+			filesys_lock_release ();
+		}
 
 		list_insert_ordered (&current->fd_table, &fde_copy->elem, compare_fd, NULL);
 	}
@@ -221,13 +237,6 @@ __do_fork (void *aux) {
 		do_iret (&if_);
 	}
 error:
-	filesys_lock_acquire ();
-	while (!list_empty (&current->fd_table)) {
-		struct fd_entry *tmp = list_entry (list_pop_front (&current->fd_table), struct fd_entry, elem);
-		file_close (tmp->file);
-		free (tmp);
-	}
-	filesys_lock_release ();
 	fs->success = false;
 	sema_up (&fs->sema);
 	thread_exit ();
@@ -331,7 +340,6 @@ process_exit (void) {
 	}
 
 	filesys_lock_acquire ();
-	enum intr_level old_level = intr_disable ();
 	while (!list_empty(fd_table)) {
 		int dup_cnt = 0;
 		struct list_elem *e = list_front (fd_table);
@@ -353,7 +361,6 @@ process_exit (void) {
 		file_close (fde->file);
 		free (fde);
 	}
-	intr_set_level(old_level);
 	filesys_lock_release ();
 	
 	self_ss = curr->ss;
@@ -362,7 +369,7 @@ process_exit (void) {
 	if (self_ss == NULL) 	
 		return;	
 		
-	old_level = intr_disable();	
+	enum intr_level old_level = intr_disable();
 
 	if (pml4 != NULL)
 		printf ("%s: exit(%d)\n", curr->name, self_ss->exit_status);
@@ -384,6 +391,14 @@ process_cleanup (void) {
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
+	/* 실행중인 파일은 쓰기금지, 따로 보관하므로 fd_table이 아니라서 cleanup시 정리*/
+	if (curr->exec_file != NULL) {
+		struct file *file = curr->exec_file;
+		curr->exec_file = NULL;
+		filesys_lock_acquire ();
+		file_close (file);
+		filesys_lock_release ();
+	}
 
 	uint64_t *pml4;
 	/* Destroy the current process's page directory and switch back
@@ -484,6 +499,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
+	char *copy = NULL;
 	int i;
 	/*Argument Passing 변수 (종민)*/
 	char *argv[128];
@@ -500,7 +516,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/*문자열 복제*/
-	char *copy = copy_file_name (file_name);
+	copy = copy_file_name (file_name);
 
 	if (copy == NULL)
 		goto done;
@@ -512,6 +528,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Open executable file. */
 	filesys_lock_acquire ();
 	file = filesys_open (argv[0]);
+	if (file != NULL)
+		file_deny_write (file);
 	filesys_lock_release ();
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", argv[0]);
@@ -627,23 +645,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->rsp -= sizeof (uintptr_t);
 	*(uintptr_t *) if_->rsp = 0;
 
-	free (copy);
+	t->exec_file = file;
+	file = NULL;
 	success = true;
-
-	struct fd_entry *fde;
-	fde = malloc (sizeof (struct fd_entry));
-	if (fde == NULL)
-		goto done;
-	fde->file = file;
-	if (list_empty (&t->fd_table))
-		fde->fd = 2;
-	else
-		fde->fd = list_entry (list_back (&t->fd_table), struct fd_entry, elem)->fd + 1;
-	list_insert_ordered (&t->fd_table, &fde->elem, compare_fd, NULL);
-	filesys_lock_acquire ();
-	file_deny_write (file);
-	filesys_lock_release ();
-	return success;
 
 done:
 	/* We arrive here whether the load is successful or not. */
@@ -707,6 +711,8 @@ char *
 copy_file_name (const char *file_name) {
 	size_t size = strlen (file_name) + 1;
 	char *copy = malloc (size);
+	if (copy == NULL)
+		return NULL;
 	strlcpy (copy, file_name, size);
 	return copy;
 }
