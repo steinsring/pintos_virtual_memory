@@ -52,7 +52,7 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	int len = strcspn(file_name, " ");
-	char *name = malloc (sizeof (len) + 1);
+	char *name = malloc (len + 1);
 	if (name == NULL)
 		return TID_ERROR;
 	strlcpy (name, file_name, len + 1);
@@ -61,6 +61,7 @@ process_create_initd (const char *file_name) {
 	tid = thread_create (name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
+	free (name);
 	return tid;
 }
 
