@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
+#include "threads/vaddr.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -196,8 +197,7 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	struct hash spt_hash;
-	hash_init (&spt_hash, hash_key, compare_key, NULL);
+	hash_init (&spt->spt_hash, hash_key, compare_key, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
