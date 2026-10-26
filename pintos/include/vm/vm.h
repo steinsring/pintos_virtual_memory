@@ -44,12 +44,14 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
+	
+	struct hash_elem elem; /* Hash element for SPT */
 
 	/* Your implementation */
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
-	union {
+	union { // 맨 처음 페이지를 초기화할때 정보를 넣어준다.
 		struct uninit_page uninit;
 		struct anon_page anon;
 		struct file_page file;
@@ -61,7 +63,7 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
-	void *kva;
+	void *kva; // 커널 가상 주소
 	struct page *page;
 };
 
@@ -85,6 +87,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+	struct hash spt_hash;
 };
 
 #include "threads/thread.h"

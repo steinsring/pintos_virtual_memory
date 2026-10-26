@@ -3,12 +3,16 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "lib/kernel/hash.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
+// 아직 최초 초기화를 하지 않은 페이지
 vm_init (void) {
+	// 이 페이지의 현재 내용을 보존할 원본 파일이 없다. 내보낼 때 swap이 필요하다.
 	vm_anon_init ();
+	// 이 페이지를 뒷받침하는 파일이 있다. 필요한 변경을 그 파일에 반영하고, 나중에 파일에서 다시 읽는다.
 	vm_file_init ();
 #ifdef EFILESYS  /* For project 4 */
 	pagecache_init ();
@@ -41,6 +45,7 @@ static struct frame *vm_evict_frame (void);
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
 bool
+// 가상 페이지를 관리하겠다.
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
@@ -158,6 +163,7 @@ vm_claim_page (void *va UNUSED) {
 }
 
 /* Claim the PAGE and set up the mmu. */
+// 가상 페이지의 내용을 지금 RAM에 준비하겠다. 즉, page->va에 해당하는 내용을 page->frame->kva에 준비하겠다.
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
@@ -174,6 +180,7 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	struct hash spt_hash;
 }
 
 /* Copy supplemental page table from src to dst */
