@@ -21,6 +21,7 @@
 #include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
+#include "hash.h"
 #endif
 
 static void process_cleanup (void);
@@ -880,6 +881,23 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+
+	/* 페이지를 만들고 spt에 등록한다. */
+	success = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
+	if (!success)
+		return success;
+
+	/* 프레임을 확보하고 매핑한다.*/
+	success = vm_claim_page(stack_bottom);
+	if (!success) {
+		/* 실패시 spt에서 page 제거 */
+		struct supplemental_page_table *spt = &thread_current()->spt;
+		struct page *page = spt_find_page(spt, stack_bottom);
+		spt_remove_page(spt, page);
+	}
+
+	/* rsp를 스택의 탑으로 설정 */
+	if_->rsp = USER_STACK;
 
 	return success;
 }

@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/mmu.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -53,8 +54,27 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
-
+		struct page *page = malloc(*page);
+		if (page == NULL)
+			goto err;
+		
+        /* init 매핑 */
+		bool (*initializer)(struct page *, enum vm_type, void *);
+        switch (type) {
+            case (VM_ANON):
+            	initializer = anon_initializer;
+				break;
+            case (VM_FILE):
+				//initializer = file_backed_initializer;
+				break;
+            default:
+				free(page);
+				goto err;
+				break;
+        }
+        uninit_new(page, upage, init, type, aux, initializer);
 		/* TODO: Insert the page into the spt. */
+		spt_insert_page(spt, page);
 	}
 err:
 	return false;
@@ -62,19 +82,27 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+spt_find_page (struct supplemental_page_table *spt, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
-
+	struct hash_item item = { .key_va = (uint8_t)va };
+	struct hash_elem *e = hash_find(&spt->spt_hash, &item.elem);
+	if (e == NULL)
+		return NULL;
+	
+	page = hash_entry(e, struct page, elem);
 	return page;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
+spt_insert_page (struct supplemental_page_table *spt,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: Fill this function. */
+	
+	if(!hash_insert(&spt->spt_hash, &page->elem))
+		succ = true;
 
 	return succ;
 }
@@ -110,8 +138,17 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
+	//struct frame *frame = NULL; 원본. 나중에 바꿔야 함
+	struct frame *frame = malloc(frame);
+	if (frame == NULL)
+		return NULL;
+
 	/* TODO: Fill this function. */
+	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
+	if (frame->kva == NULL) {
+		free(frame);
+		PANIC("TODO");
+	}
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -153,6 +190,9 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
+	page = spt_find_page(&thread_current()->spt, va);
+	if (page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
@@ -167,6 +207,8 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true))
+		return false;
 
 	return swap_in (page, frame->kva);
 }

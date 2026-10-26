@@ -14,7 +14,8 @@
             ],
             "defines": [
             "USERPROG",
-            "FILESYS"
+            "FILESYS",
+            "VM",
             ],
             "compilerPath": "/usr/bin/gcc",
             "compilerArgs": [
@@ -26,4 +27,4 @@
         }
     ],
     "version": 4
-}
+}
