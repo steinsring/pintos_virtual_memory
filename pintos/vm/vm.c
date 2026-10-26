@@ -30,7 +30,7 @@ enum vm_type
 page_get_type (struct page *page) {
 	int ty = VM_TYPE (page->operations->type);
 	switch (ty) {
-		case VM_UNINIT:,,,
+		case VM_UNINIT:
 			return VM_TYPE (page->uninit.type);
 		default:
 			return ty;
@@ -96,22 +96,22 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 
     	/* 3. uninit_new()로 page에 upage와 초기화 방법 설정 */
-		uninit_new(page, upage, init, type, aux, );
+		uninit_new(page, upage, init, type, aux, initializer);
 
     	/* 4. page->writable 설정 */
+		page->writable = writable;
 
     	/* 5. spt_insert_page(spt, page)
           실패하면 할당한 page 정리 */
-		spt_insert_page(spt, page);
+		if(!spt_insert_page(spt, page)){
+			free (page);
+			goto err;
+		}
 
 
     	/* 6. 성공하면 return true */
+		return true;
 		
-	
-
-
-
-
 
 	}
 err:
@@ -128,7 +128,7 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 		hash_find (&spt->spt_hash, &key.elem);
 
 	if (found == NULL)
-		retunr NULL;
+		return NULL;
 
 	return hash_entry (found, struct page, elem);
 }
@@ -139,23 +139,16 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: Fill this function. */
-	hash_insert (&spt->spt_hash, &page->elem);
-
-	if (hash_find (&spt->spt_hash, &page->elem) == NULL)
-		succ = false;
-	else
-		succ = true;
-
-	return succ;
-	//return hash_insert (&spt->spt_hash, &page->elem) == NULL;
+	
+	return hash_insert (&spt->spt_hash, &page->elem) == NULL;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	
-	vm_dealloc_page (page);
 	hash_delete (&spt->spt_hash, &page->elem);
-	
+	vm_dealloc_page (page);
+
 	return true;
 }
 
@@ -184,7 +177,7 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
+	struct frame *frame = malloc(sizeof *frame);
 	/* TODO: Fill this function. */
 
 	ASSERT (frame != NULL);

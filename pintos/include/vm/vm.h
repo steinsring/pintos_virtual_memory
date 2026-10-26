@@ -48,6 +48,8 @@ struct page {
 	
 	struct hash_elem elem; /* Hash element for SPT */
 
+	bool writable;
+
 	/* Your implementation */
 
 	/* Per-type data are binded into the union.
