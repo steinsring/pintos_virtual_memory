@@ -68,10 +68,16 @@ err:
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
+	struct page key;
+	key.va = pg_round_down (va);  //페이지의 시작 주소로 내림.
 
-	return page;
+	struct hash_elem *found =
+		hash_find (&spt->spt_hash, &key.elem);
+
+	if (found == NULL)
+		retunr NULL;
+
+	return hash_entry (found, struct page, elem);
 }
 
 /* Insert PAGE into spt with validation. */
@@ -80,13 +86,23 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: Fill this function. */
+	hash_insert (&spt->spt_hash, &page->elem);
+
+	if (hash_find (&spt->spt_hash, &page->elem) == NULL)
+		succ = false;
+	else
+		succ = true;
 
 	return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	
 	vm_dealloc_page (page);
+
+	hash_delete (&spt->spt_hash, &page->elem);
+	
 	return true;
 }
 
@@ -137,7 +153,7 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt; 
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
@@ -181,6 +197,7 @@ vm_do_claim_page (struct page *page) {
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	struct hash spt_hash;
+	hash_init (&spt_hash, hash_key, compare_key, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
