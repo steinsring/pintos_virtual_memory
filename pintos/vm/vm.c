@@ -92,7 +92,8 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
-	struct page item = { .va = va };
+	void *start_va = pg_round_down(va);
+	struct page item = { .va = start_va };
 	struct hash_elem *e = hash_find(&spt->spt_hash, &item.elem);
 	if (e == NULL)
 		return NULL;
@@ -119,7 +120,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
-	hash_delete(&thread_current()->spt, &page->elem);
+	hash_delete(spt, &page->elem);
 	vm_dealloc_page (page);
 	return true;
 }
@@ -178,12 +179,17 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+vm_try_handle_fault (struct intr_frame *f, void *addr,
+		bool user, bool write, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+
+	page = spt_find_page(spt, addr);
+	/* 이후 stack growth 처리*/
+	if (page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
