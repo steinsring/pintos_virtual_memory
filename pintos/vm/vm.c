@@ -30,7 +30,7 @@ enum vm_type
 page_get_type (struct page *page) {
 	int ty = VM_TYPE (page->operations->type);
 	switch (ty) {
-		case VM_UNINIT:
+		case VM_UNINIT:,,,
 			return VM_TYPE (page->uninit.type);
 		default:
 			return ty;
@@ -47,10 +47,11 @@ static struct frame *vm_evict_frame (void);
  * `vm_alloc_page`. */
 bool
 // 가상 페이지를 관리하겠다.
+// 페이지를 지금 RAM에 올리는 함수 X 나중에 준비할 페이지의 정보를 만들어 SPT에 등록하는 함수
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
-	ASSERT (VM_TYPE(type) != VM_UNINIT)
+	ASSERT (VM_TYPE(type) != VM_UNINIT);
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
@@ -59,8 +60,59 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
-
 		/* TODO: Insert the page into the spt. */
+
+		/* 1. struct page 할당 */
+		struct page *page = malloc (sizeof *page);
+		
+		if (page == NULL)
+			goto err;
+
+	    /* 2. VM_TYPE(type)에 따라
+          anon_initializer 또는 file_backed_initializer 선택 */
+	
+		  /*if (type == VM_ANON)
+			anon_initializer (page, type, aux);
+		else if (type == VM_FILE)
+			file_backed_initializer (page, type, aux);
+		else{
+			free(page);
+			goto err;
+		} */
+
+		bool (*initializer) (struct page *, enum vm_type, void *);
+
+		switch (VM_TYPE (type)) {
+			case VM_ANON:
+				initializer = anon_initializer;
+				break;
+			case VM_FILE:
+				initializer = file_backed_initializer;
+				break;
+			
+			default:
+				free (page);
+				goto err;
+		}
+
+    	/* 3. uninit_new()로 page에 upage와 초기화 방법 설정 */
+		uninit_new(page, upage, init, type, aux, );
+
+    	/* 4. page->writable 설정 */
+
+    	/* 5. spt_insert_page(spt, page)
+          실패하면 할당한 page 정리 */
+		spt_insert_page(spt, page);
+
+
+    	/* 6. 성공하면 return true */
+		
+	
+
+
+
+
+
 	}
 err:
 	return false;
@@ -95,13 +147,13 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		succ = true;
 
 	return succ;
+	//return hash_insert (&spt->spt_hash, &page->elem) == NULL;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	
 	vm_dealloc_page (page);
-
 	hash_delete (&spt->spt_hash, &page->elem);
 	
 	return true;
