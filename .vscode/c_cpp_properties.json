@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {
     "configurations": [
         {
@@ -28,3 +29,35 @@
     ],
     "version": 4
 }
+=======
+{
+    "configurations": [
+        {
+            "name": "Pintos",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/pintos",
+                "${workspaceFolder}/pintos/include/lib",
+                "${workspaceFolder}/pintos/include",
+                "${workspaceFolder}/pintos/include/lib/kernel",
+                "${workspaceFolder}/pintos/lib/kernel",
+                "${workspaceFolder}/pintos/tests/threads",
+                "${workspaceFolder}/pintos/include/lib/user"
+            ],
+            "defines": [
+            "USERPROG",
+            "FILESYS",
+            "VM"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "compilerArgs": [
+                "-nostdinc"
+            ],
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
+>>>>>>> develop

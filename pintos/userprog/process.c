@@ -860,7 +860,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
 		void *aux = NULL;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+					writable, lazy_load_segment, aux)) //매핑만 해줌
 			return false;
 
 		/* Advance. */
@@ -872,6 +872,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
+//스택 영역 지정 -> 메모리 올리기 -> / a.p에서 어떤 파일 읽을지 인자 넣어줌 -> 프로세스 실행하면 그때 메모리에 올라간 내용 읽으면서 실행
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
@@ -882,23 +883,19 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	/* 페이지를 만들고 spt에 등록한다. */
-	success = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
-	if (!success)
-		return success;
-
-	/* 프레임을 확보하고 매핑한다.*/
-	success = vm_claim_page(stack_bottom);
-	if (!success) {
-		/* 실패시 spt에서 page 제거 */
-		struct supplemental_page_table *spt = &thread_current()->spt;
-		struct page *page = spt_find_page(spt, stack_bottom);
-		spt_remove_page(spt, page);
+	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
+	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
+		return false;
 	}
-
-	/* rsp를 스택의 탑으로 설정 */
+	//만들고 바로 매핑 시켜줌
+	if (!vm_claim_page(stack_bottom)){
+		struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
+        if (page != NULL) {
+            spt_remove_page(&thread_current()->spt, page);
+        }
+        return false;
+	}
 	if_->rsp = USER_STACK;
-
-	return success;
+	return true;
 }
 #endif /* VM */

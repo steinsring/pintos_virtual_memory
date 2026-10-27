@@ -2,6 +2,8 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "lib/kernel/list.h"
+#include <hash.h>
 
 enum vm_type {
 	/* page not initialized */
@@ -88,7 +90,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-	struct hash spt_hash;
+	struct hash spt_hash;     // va → struct page 를 담는 해시 테이블
 };
 
 #include "threads/thread.h"
