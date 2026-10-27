@@ -42,8 +42,8 @@ struct thread;
  * uninit_page, file_page, anon_page, and page cache (project4).
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
-	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
+	const struct page_operations *operations;
 	struct frame *frame;   /* Back reference for frame */
 	
 	struct hash_elem elem; /* Hash element for SPT */
