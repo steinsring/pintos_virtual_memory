@@ -872,7 +872,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
-<<<<<<< HEAD
 // 만든 인자를 넣어주는데, 인자를 넣을 스택을 미리 만들어주는 것
 // user program은 쓰였는데 vm에 오면서 없어짐.
 // alloc_page_init 써서 페이지 하나를 만들고 SPT에 등록을 시켜놓는다.
@@ -880,9 +879,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 // user program에서 쓰던 setup_stack랑 같은 동작을 하게.
 // rsp를 제일 위로 올려준다.
 // top-down으로 이거부터 한다.
-=======
-//스택 영역 지정 -> 메모리 올리기 -> / a.p에서 어떤 파일 읽을지 인자 넣어줌 -> 프로세스 실행하면 그때 메모리에 올라간 내용 읽으면서 실행
->>>>>>> origin/develop
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = true;
@@ -893,22 +889,6 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-<<<<<<< HEAD
-	/* 1. 스택으로 사용할 페이지 정보를 SPT에 등록 */
-    if (!vm_alloc_page (VM_ANON | VM_MARKER_0,stack_bottom, true))
-        return false;
-
-    /* 2. 실제 메모리를 확보하고 가상 주소와 연결 */
-    if (!vm_claim_page (stack_bottom))
-        return false;
-
-    /* 3. 사용자 모드에서 사용할 초기 스택 포인터 설정 */
-    if_->rsp = USER_STACK;
-	
-	return success;
-	
-
-=======
 	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
 	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
 		return false;
@@ -923,6 +903,5 @@ setup_stack (struct intr_frame *if_) {
 	}
 	if_->rsp = USER_STACK;
 	return true;
->>>>>>> origin/develop
 }
 #endif /* VM */
