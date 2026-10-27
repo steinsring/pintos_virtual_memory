@@ -49,6 +49,9 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 	struct hash_elem elem; /* 해시 테이블 부품 */
 	bool writable;			/* 쓰기 권한 */
+	struct file *file;		/* 읽을 파일 */
+    size_t page_read_bytes;	/* 읽을 바이트 수 */
+    size_t page_zero_bytes;	/* 0으로 채울 바이트 수*/
 
 	/* Your implementation */
 
