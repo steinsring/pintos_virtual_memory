@@ -5,6 +5,7 @@
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
 #include "threads/vaddr.h"
+#include "threads/mmu.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -249,6 +250,8 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	if(!pml4_set_page(&thread_current()->pml4,page->va,frame->kva,page->writable))
+		return false;
 
 
 	return swap_in (page, frame->kva);
