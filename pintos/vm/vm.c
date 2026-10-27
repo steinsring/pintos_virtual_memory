@@ -190,6 +190,8 @@ vm_get_frame (void) {
 		return NULL;
 	}
 
+	frame->page = NULL;
+
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -245,12 +247,18 @@ static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
 
+	if(frame == NULL)
+		return false;
+
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(&thread_current()->pml4,page->va,frame->kva,page->writable))
+	if(!pml4_set_page(thread_current()->pml4,page->va,frame->kva,page->writable))
+		page->frame = NULL;
+		palloc_free_page (frame->kva);
+		free (frame);
 		return false;
 
 

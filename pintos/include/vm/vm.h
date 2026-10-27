@@ -80,7 +80,7 @@ struct page_operations {
 	void (*destroy) (struct page *);
 	enum vm_type type;
 };
-
+//type이랑 페이지 및 프레임이 존재하는지, 존재한다면 어디있는지(?)
 #define swap_in(page, v) (page)->operations->swap_in ((page), v)
 #define swap_out(page) (page)->operations->swap_out (page)
 #define destroy(page) \
