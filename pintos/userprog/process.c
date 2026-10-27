@@ -827,6 +827,21 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	struct file_info *file_info = aux;
+	size_t read_bytes = file_read_at(file_info->file, 
+									page->frame->kva, 
+									file_info->page_read_bytes, 
+									file_info->ofs);
+	if (read_bytes != file_info->page_read_bytes) {
+		free(file_info);
+		return false;
+	}
+	void *end_of_read = (void *)((char *)page->frame->kva + file_info->page_read_bytes);
+	memset(end_of_read, 0, file_info->page_zero_bytes);
+
+	free(file_info);
+	return true;
+
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -850,6 +865,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
 
+	off_t next_ofs = ofs;
 	while (read_bytes > 0 || zero_bytes > 0) {
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
@@ -858,15 +874,18 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct file_info *file_info = malloc(sizeof *file_info);
+		init_file_info(file_info, file, next_ofs, page_read_bytes, page_zero_bytes);
+
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux)) //매핑만 해줌
+					writable, lazy_load_segment, file_info)) //매핑만 해줌
 			return false;
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		next_ofs += + PGSIZE;
 	}
 	return true;
 }
@@ -903,5 +922,13 @@ setup_stack (struct intr_frame *if_) {
 	}
 	if_->rsp = USER_STACK;
 	return true;
+}
+
+void
+init_file_info(struct file_info *file_info, const struct file *file, const off_t ofs, const size_t p_read_bytes, const size_t p_zero_bytes) {
+	file_info->file = file;
+	file_info->ofs = ofs;
+	file_info->page_read_bytes = p_read_bytes;
+	file_info->page_zero_bytes = p_zero_bytes;
 }
 #endif /* VM */

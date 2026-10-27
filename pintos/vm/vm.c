@@ -78,7 +78,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				goto err;
 		}
 
-		uninit_new (page,upage,init,type,aux,initializer);
+		uninit_new (page, upage, init, type, aux, initializer);
 		page->writable = writable;
 
 		/* TODO: Insert the page into the spt. */
@@ -185,7 +185,7 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user, bool write, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
@@ -236,27 +236,16 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(thread_current()->pml4,page->va,frame->kva,page->writable))
+	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
 		page->frame = NULL;
-		palloc_free_page (frame->kva);
-		free (frame);
+		palloc_free_page(frame->kva);
+		free(frame);
 		return false;
-
+	}
 
 	return swap_in (page, frame->kva);
 }
-uint64_t
-hash_key (const struct hash_elem *e, void *aux UNUSED) {
-        const struct page *p = hash_entry (e, struct page, elem);
-        return hash_bytes(&p->va, sizeof p->va);
-}
 
-bool    
-compare_key (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) {
-        const struct page *page_a=hash_entry (a, struct page, elem);
-        const struct page *page_b = hash_entry (b, struct page, elem);
-        return page_a->va < page_b->va;
-}
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {

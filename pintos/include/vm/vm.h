@@ -47,10 +47,9 @@ struct page {
 	void *va;              /* Address in terms of user space */
 	const struct page_operations *operations;
 	struct frame *frame;   /* Back reference for frame */
+
 	struct hash_elem elem; /* 해시 테이블 부품 */
 	bool writable;			/* 쓰기 권한 */
-
-	/* Your implementation */
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
