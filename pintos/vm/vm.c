@@ -179,6 +179,15 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = malloc(sizeof *frame);
 	/* TODO: Fill this function. */
+	if(frame == NULL)
+		return NULL;
+
+	frame->kva = palloc_get_page(PAL_ZERO|PAL_USER);
+
+	if(frame->kva == NULL){
+		free(frame);
+		return NULL;
+	}
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -240,6 +249,7 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+
 
 	return swap_in (page, frame->kva);
 }
