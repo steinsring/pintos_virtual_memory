@@ -245,18 +245,7 @@ vm_do_claim_page (struct page *page) {
 
 	return swap_in (page, frame->kva);
 }
-uint64_t
-hash_key (const struct hash_elem *e, void *aux UNUSED) {
-        const struct page *p = hash_entry (e, struct page, elem);
-        return hash_bytes(&p->va, sizeof p->va);
-}
 
-bool    
-compare_key (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) {
-        const struct page *page_a=hash_entry (a, struct page, elem);
-        const struct page *page_b = hash_entry (b, struct page, elem);
-        return page_a->va < page_b->va;
-}
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
