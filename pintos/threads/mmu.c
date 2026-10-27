@@ -9,6 +9,9 @@
 #include "intrinsic.h"
 
 static uint64_t *
+// 페이지 디렉토리 엔트리(PDE)와 페이지 테이블 엔트리(PTE)를 탐색하는 함수. 
+// 주어진 가상 주소(va)에 대해 페이지 디렉토리와 페이지 테이블을 순회하며, 해당 가상 주소에 대한 PTE를 반환. 
+// 만약 해당 PTE가 존재하지 않고 create 플래그가 true이면, 새로운 페이지를 할당하여 PTE를 생성.
 pgdir_walk (uint64_t *pdp, const uint64_t va, int create) {
 	int idx = PDX (va);
 	if (pdp) {
@@ -229,7 +232,7 @@ pml4_get_page (uint64_t *pml4, const void *uaddr) {
  * otherwise it is read-only.
  * Returns true if successful, false if memory allocation
  * failed. */
-bool
+bool              //pml4_set_page(owner_pml4, page->va, frame->kva, writable);
 pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (pg_ofs (kpage) == 0);
@@ -239,7 +242,7 @@ pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) upage, 1);
 
 	if (pte)
-		*pte = vtop (kpage) | PTE_P | (rw ? PTE_W : 0) | PTE_U;
+		*pte = vtop (kpage) | PTE_P | (rw ? PTE_W : 0) | PTE_U;//
 	return pte != NULL;
 }
 

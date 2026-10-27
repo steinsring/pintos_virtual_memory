@@ -48,6 +48,8 @@
             "USERPROG",
             "FILESYS",
             "VM"
+            "FILESYS",
+            "VM"
             ],
             "compilerPath": "/usr/bin/gcc",
             "compilerArgs": [

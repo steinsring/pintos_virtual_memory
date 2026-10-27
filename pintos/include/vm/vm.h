@@ -2,8 +2,12 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+<<<<<<< HEAD
+#include "lib/kernel/hash.h"
+=======
 #include "lib/kernel/list.h"
 #include <hash.h>
+>>>>>>> origin/develop
 
 enum vm_type {
 	/* page not initialized */
@@ -44,17 +48,24 @@ struct thread;
  * uninit_page, file_page, anon_page, and page cache (project4).
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
-	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
+	const struct page_operations *operations;
 	struct frame *frame;   /* Back reference for frame */
+<<<<<<< HEAD
+	
+	struct hash_elem elem; /* Hash element for SPT */
+
+	bool writable;
+=======
 	struct hash_elem elem; /* 해시 테이블 부품 */
 	bool writable;			/* 쓰기 권한 */
+>>>>>>> origin/develop
 
 	/* Your implementation */
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
-	union {
+	union { // 맨 처음 페이지를 초기화할때 정보를 넣어준다.
 		struct uninit_page uninit;
 		struct anon_page anon;
 		struct file_page file;
@@ -66,7 +77,7 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
-	void *kva;
+	void *kva; // 커널 가상 주소
 	struct page *page;
 };
 
@@ -80,7 +91,7 @@ struct page_operations {
 	void (*destroy) (struct page *);
 	enum vm_type type;
 };
-
+//type이랑 페이지 및 프레임이 존재하는지, 존재한다면 어디있는지(?)
 #define swap_in(page, v) (page)->operations->swap_in ((page), v)
 #define swap_out(page) (page)->operations->swap_out (page)
 #define destroy(page) \
@@ -90,7 +101,11 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+<<<<<<< HEAD
+	struct hash spt_hash;
+=======
 	struct hash spt_hash;     // va → struct page 를 담는 해시 테이블
+>>>>>>> origin/develop
 };
 
 #include "threads/thread.h"

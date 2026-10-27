@@ -3,13 +3,18 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "lib/kernel/hash.h"
+#include "threads/vaddr.h"
 #include "threads/mmu.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
+// 아직 최초 초기화를 하지 않은 페이지
 vm_init (void) {
+	// 이 페이지의 현재 내용을 보존할 원본 파일이 없다. 내보낼 때 swap이 필요하다.
 	vm_anon_init ();
+	// 이 페이지를 뒷받침하는 파일이 있다. 필요한 변경을 그 파일에 반영하고, 나중에 파일에서 다시 읽는다.
 	vm_file_init ();
 #ifdef EFILESYS  /* For project 4 */
 	pagecache_init ();
@@ -42,10 +47,12 @@ static struct frame *vm_evict_frame (void);
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
 bool
+// 가상 페이지를 관리하겠다.
+// 페이지를 지금 RAM에 올리는 함수 X 나중에 준비할 페이지의 정보를 만들어 SPT에 등록하는 함수
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
-	ASSERT (VM_TYPE(type) != VM_UNINIT)
+	ASSERT (VM_TYPE(type) != VM_UNINIT);
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
@@ -115,6 +122,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page ) {
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	
 	hash_delete (&spt->spt_hash, &page->elem);
 	vm_dealloc_page (page);
 }
@@ -144,17 +152,19 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	//struct frame *frame = NULL; 원본. 나중에 바꿔야 함
 	struct frame *frame = malloc(sizeof *frame);
-	if (frame == NULL)
+	/* TODO: Fill this function. */
+	if(frame == NULL)
 		return NULL;
 
-	/* TODO: Fill this function. */
-	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
-	if (frame->kva == NULL) {
+	frame->kva = palloc_get_page(PAL_ZERO|PAL_USER);
+
+	if(frame->kva == NULL){
 		free(frame);
 		PANIC("TODO");
 	}
+
+	frame->page = NULL;
 
 	ASSERT (frame != NULL);
 	
@@ -204,25 +214,35 @@ vm_claim_page (void *va) {
 	if (page == NULL)
 		return false;
 
+	page = spt_find_page(&thread_current()->spt, va);
+
+	if(page == NULL)
+		return NULL;
+
 	return vm_do_claim_page (page);
 }
 
 /* Claim the PAGE and set up the mmu. */
+// 가상 페이지의 내용을 지금 RAM에 준비하겠다. 즉, page->va에 해당하는 내용을 page->frame->kva에 준비하겠다.
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+
+	if(frame == NULL)
+		return false;
 
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if (!pml4_set_page (thread_current ()->pml4,
-                    page->va, frame->kva, page->writable)){
-						palloc_free_page (frame->kva);
-        				free (frame);
-						return false;
-					}
+	if(!pml4_set_page(thread_current()->pml4,page->va,frame->kva,page->writable))
+		page->frame = NULL;
+		palloc_free_page (frame->kva);
+		free (frame);
+		return false;
+
+
 	return swap_in (page, frame->kva);
 }
 uint64_t
