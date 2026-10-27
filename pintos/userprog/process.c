@@ -873,14 +873,27 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 // top-down으로 이거부터 한다.
 static bool
 setup_stack (struct intr_frame *if_) {
-	bool success = false;
-	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+	bool success = true;
+	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE); //stack용 페이지 주소.
 
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
+	/* 1. 스택으로 사용할 페이지 정보를 SPT에 등록 */
+    if (!vm_alloc_page (VM_ANON | VM_MARKER_0,stack_bottom, true))
+        return false;
+
+    /* 2. 실제 메모리를 확보하고 가상 주소와 연결 */
+    if (!vm_claim_page (stack_bottom))
+        return false;
+
+    /* 3. 사용자 모드에서 사용할 초기 스택 포인터 설정 */
+    if_->rsp = USER_STACK;
+	
 	return success;
+	
+
 }
 #endif /* VM */
