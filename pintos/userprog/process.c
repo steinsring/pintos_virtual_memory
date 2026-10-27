@@ -21,6 +21,7 @@
 #include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
+#include "hash.h"
 #endif
 
 static void process_cleanup (void);
@@ -52,15 +53,18 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	int len = strcspn(file_name, " ");
-	char *name = malloc (sizeof (len) + 1);
-	if (name == NULL)
+	char *name = malloc (len + 1);
+	if (name == NULL) {
+		palloc_free_page (fn_copy);
 		return TID_ERROR;
+	}
 	strlcpy (name, file_name, len + 1);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
+	free (name);
 	return tid;
 }
 
@@ -93,7 +97,12 @@ process_fork (const char *name, struct intr_frame *if_) {
 
 	sema_down (&fork_struct.sema);
 
-	return fork_struct.success ? tid : TID_ERROR;
+	/* fork실패시 자식의 종료 정보 제거 */
+	if (!fork_struct.success) {
+		process_wait (tid);
+		return TID_ERROR;
+	}
+	return tid;
 }
 
 #ifndef VM
@@ -170,6 +179,13 @@ __do_fork (void *aux) {
 		goto error;
 
 	process_activate (current);
+	if (parent->exec_file != NULL) {
+		filesys_lock_acquire ();
+		current->exec_file = file_duplicate (parent->exec_file);
+		filesys_lock_release ();
+		if (current->exec_file == NULL)
+			goto error;
+	}
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
@@ -199,14 +215,16 @@ __do_fork (void *aux) {
 		filesys_lock_acquire ();
 		if (fde->file != NULL) {
 			fde_copy->file = file_duplicate (fde->file);
+			filesys_lock_release ();
 			if (fde_copy->file == NULL) {
 				free (fde_copy);
 				goto error;
 			}
 		}
-		else
+		else {
 			fde_copy->file = NULL;
-		filesys_lock_release ();
+			filesys_lock_release ();
+		}
 
 		list_insert_ordered (&current->fd_table, &fde_copy->elem, compare_fd, NULL);
 	}
@@ -220,13 +238,6 @@ __do_fork (void *aux) {
 		do_iret (&if_);
 	}
 error:
-	filesys_lock_acquire ();
-	while (!list_empty (&current->fd_table)) {
-		struct fd_entry *tmp = list_entry (list_pop_front (&current->fd_table), struct fd_entry, elem);
-		file_close (tmp->file);
-		free (tmp);
-	}
-	filesys_lock_release ();
 	fs->success = false;
 	sema_up (&fs->sema);
 	thread_exit ();
@@ -330,7 +341,6 @@ process_exit (void) {
 	}
 
 	filesys_lock_acquire ();
-	enum intr_level old_level = intr_disable ();
 	while (!list_empty(fd_table)) {
 		int dup_cnt = 0;
 		struct list_elem *e = list_front (fd_table);
@@ -352,7 +362,6 @@ process_exit (void) {
 		file_close (fde->file);
 		free (fde);
 	}
-	intr_set_level(old_level);
 	filesys_lock_release ();
 	
 	self_ss = curr->ss;
@@ -361,7 +370,7 @@ process_exit (void) {
 	if (self_ss == NULL) 	
 		return;	
 		
-	old_level = intr_disable();	
+	enum intr_level old_level = intr_disable();
 
 	if (pml4 != NULL)
 		printf ("%s: exit(%d)\n", curr->name, self_ss->exit_status);
@@ -383,6 +392,14 @@ process_cleanup (void) {
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
+	/* 실행중인 파일은 쓰기금지, 따로 보관하므로 fd_table이 아니라서 cleanup시 정리*/
+	if (curr->exec_file != NULL) {
+		struct file *file = curr->exec_file;
+		curr->exec_file = NULL;
+		filesys_lock_acquire ();
+		file_close (file);
+		filesys_lock_release ();
+	}
 
 	uint64_t *pml4;
 	/* Destroy the current process's page directory and switch back
@@ -483,6 +500,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
+	char *copy = NULL;
 	int i;
 	/*Argument Passing 변수 (종민)*/
 	char *argv[128];
@@ -499,7 +517,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/*문자열 복제*/
-	char *copy = copy_file_name (file_name);
+	copy = copy_file_name (file_name);
 
 	if (copy == NULL)
 		goto done;
@@ -511,6 +529,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Open executable file. */
 	filesys_lock_acquire ();
 	file = filesys_open (argv[0]);
+	if (file != NULL)
+		file_deny_write (file);
 	filesys_lock_release ();
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", argv[0]);
@@ -626,23 +646,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->rsp -= sizeof (uintptr_t);
 	*(uintptr_t *) if_->rsp = 0;
 
-	free (copy);
+	t->exec_file = file;
+	file = NULL;
 	success = true;
-
-	struct fd_entry *fde;
-	fde = malloc (sizeof (struct fd_entry));
-	if (fde == NULL)
-		goto done;
-	fde->file = file;
-	if (list_empty (&t->fd_table))
-		fde->fd = 2;
-	else
-		fde->fd = list_entry (list_back (&t->fd_table), struct fd_entry, elem)->fd + 1;
-	list_insert_ordered (&t->fd_table, &fde->elem, compare_fd, NULL);
-	filesys_lock_acquire ();
-	file_deny_write (file);
-	filesys_lock_release ();
-	return success;
 
 done:
 	/* We arrive here whether the load is successful or not. */
@@ -706,6 +712,8 @@ char *
 copy_file_name (const char *file_name) {
 	size_t size = strlen (file_name) + 1;
 	char *copy = malloc (size);
+	if (copy == NULL)
+		return NULL;
 	strlcpy (copy, file_name, size);
 	return copy;
 }
@@ -852,7 +860,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
 		void *aux = NULL;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+					writable, lazy_load_segment, aux)) //매핑만 해줌
 			return false;
 
 		/* Advance. */
@@ -864,6 +872,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
+<<<<<<< HEAD
 // 만든 인자를 넣어주는데, 인자를 넣을 스택을 미리 만들어주는 것
 // user program은 쓰였는데 vm에 오면서 없어짐.
 // alloc_page_init 써서 페이지 하나를 만들고 SPT에 등록을 시켜놓는다.
@@ -871,6 +880,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 // user program에서 쓰던 setup_stack랑 같은 동작을 하게.
 // rsp를 제일 위로 올려준다.
 // top-down으로 이거부터 한다.
+=======
+//스택 영역 지정 -> 메모리 올리기 -> / a.p에서 어떤 파일 읽을지 인자 넣어줌 -> 프로세스 실행하면 그때 메모리에 올라간 내용 읽으면서 실행
+>>>>>>> origin/develop
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = true;
@@ -881,6 +893,7 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
+<<<<<<< HEAD
 	/* 1. 스택으로 사용할 페이지 정보를 SPT에 등록 */
     if (!vm_alloc_page (VM_ANON | VM_MARKER_0,stack_bottom, true))
         return false;
@@ -895,5 +908,21 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 	
 
+=======
+	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
+	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
+		return false;
+	}
+	//만들고 바로 매핑 시켜줌
+	if (!vm_claim_page(stack_bottom)){
+		struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
+        if (page != NULL) {
+            spt_remove_page(&thread_current()->spt, page);
+        }
+        return false;
+	}
+	if_->rsp = USER_STACK;
+	return true;
+>>>>>>> origin/develop
 }
 #endif /* VM */

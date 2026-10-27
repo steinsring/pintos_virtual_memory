@@ -16,6 +16,9 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
+#include <string.h>
+#include "threads/malloc.h"
+#include "threads/init.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -198,10 +201,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 			fde = malloc (sizeof (struct fd_entry));
 			if (fde == NULL) {
+				filesys_lock_acquire ();
 				file_close (file);
+				filesys_lock_release ();
 				break;
 			}
 			fde->file = file;
+			fde->is_stdin = false;
 
 			if (list_empty (&curr->fd_table))
 				fde->fd = 2;
