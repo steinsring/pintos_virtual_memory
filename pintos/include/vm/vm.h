@@ -32,6 +32,7 @@ enum vm_type {
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
 #endif
+#include "hash.h"
 
 struct page_operations;
 struct thread;
@@ -47,7 +48,7 @@ struct page {
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 	struct hash_elem elem; /* 해시 테이블 부품 */
-	bool writable;        /* 페이지 쓰기 권한 */
+	bool writable;			/* 쓰기 권한 */
 
 	/* Your implementation */
 

@@ -21,6 +21,7 @@
 #include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
+#include "hash.h"
 #endif
 
 static void process_cleanup (void);
@@ -882,10 +883,8 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	//vm_alloc_page_with_initializer(type,upage,writale)
-
 	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
-	if (!vm_alloc_page(VM_ANON,stack_bottom,true)) {
+	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
 		return false;
 	}
 	//만들고 바로 매핑 시켜줌
@@ -896,7 +895,7 @@ setup_stack (struct intr_frame *if_) {
         }
         return false;
 	}
-	if_->rsp=(uint8_t *) USER_STACK;
-	return success;
+	if_->rsp = USER_STACK;
+	return true;
 }
 #endif /* VM */

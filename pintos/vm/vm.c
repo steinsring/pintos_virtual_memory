@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/mmu.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -81,24 +82,29 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		return true;
 
 	}
+
+	return true;
+
 err:
 	return false;
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt, void *va) {
-	struct page p;
-	struct hash_elem *e;
-
-	p.va = pg_round_down (va);
-
-    e = hash_find (&spt->spt_hash, &p.elem);
-
-    if (e == NULL)
-        return NULL;
-
-    return hash_entry (e, struct page, elem);
+spt_find_page (struct supplemental_page_table *spt, void *va UNUSED) {
+	struct page *page = NULL;
+	/* TODO: Fill this function. */
+	void *start_va = pg_round_down(va);
+	struct page item = { .va = start_va };
+	struct hash_elem *e = hash_find(&spt->spt_hash, &item.elem);
+	if (e == NULL)
+		return NULL;
+	
+	page = hash_entry(e, struct page, elem);
+	if (page == NULL)
+		return NULL;
+	
+	return page;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -138,16 +144,20 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
+	//struct frame *frame = NULL; 원본. 나중에 바꿔야 함
 	struct frame *frame = malloc(sizeof *frame);
+	if (frame == NULL)
+		return NULL;
+
+	/* TODO: Fill this function. */
+	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
+	if (frame->kva == NULL) {
+		free(frame);
+		PANIC("TODO");
+	}
+
 	ASSERT (frame != NULL);
 	
-	frame->kva = palloc_get_page (PAL_USER);
-	if(frame->kva == NULL){
-		free(frame);
-		PANIC ("todo: eviction");
-	}
-	frame->page = NULL;
-
 	return frame;
 }
 
@@ -163,12 +173,17 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+vm_try_handle_fault (struct intr_frame *f, void *addr,
+		bool user, bool write, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+
+	page = spt_find_page(spt, addr);
+	/* 이후 stack growth 처리*/
+	if (page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
@@ -185,9 +200,10 @@ vm_dealloc_page (struct page *page) {
 bool
 vm_claim_page (void *va) {
 	/* TODO: Fill this function */
-	struct page *page = spt_find_page(&thread_current ()->spt,va);
-	if(page==NULL)
+	struct page *page = spt_find_page(&thread_current()->spt, va);
+	if (page == NULL)
 		return false;
+
 	return vm_do_claim_page (page);
 }
 
@@ -224,7 +240,7 @@ compare_key (const struct hash_elem *a, const struct hash_elem *b, void *aux UNU
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	hash_init (&spt->spt_hash, hash_key, compare_key, NULL);
+	hash_init(&spt->spt_hash, hash_key, compare_key, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
