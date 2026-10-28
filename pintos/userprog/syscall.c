@@ -177,33 +177,25 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 		case SYS_CREATE :
 			valid_handler (f);
-			filesys_lock_acquire ();
 			f->R.rax = filesys_create (f->R.rdi, f->R.rsi);
-			filesys_lock_release ();
 			break;
 
 		case SYS_REMOVE :
 			valid_handler (f);
-			filesys_lock_acquire ();
 			f->R.rax = filesys_remove (f->R.rdi);
-			filesys_lock_release ();
 			break;
 
 		case SYS_OPEN : {
 			valid_handler (f);
 			f->R.rax = -1;
-			filesys_lock_acquire ();
 			struct file *file = filesys_open (f->R.rdi);
-			filesys_lock_release ();
 			if (file == NULL) {
 				break;
 			}
 
 			fde = malloc (sizeof (struct fd_entry));
 			if (fde == NULL) {
-				filesys_lock_acquire ();
 				file_close (file);
-				filesys_lock_release ();
 				break;
 			}
 			fde->file = file;
@@ -228,9 +220,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 				break;
 			
 			if (f->R.rdi == fde->fd) {
-				filesys_lock_acquire ();
 				f->R.rax = file_length (fde->file);
-				filesys_lock_release ();
 			}
 			break;
 
@@ -253,9 +243,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			}
 
 			if (f->R.rdi == fde->fd) {
-				filesys_lock_acquire ();
 				f->R.rax = file_read (fde->file, (void *)f->R.rsi, f->R.rdx);
-				filesys_lock_release ();
 			}
 			break;
 		}
@@ -276,9 +264,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			}
 				
 			if (f->R.rdi == fde->fd) {
-				filesys_lock_acquire ();
 				f->R.rax = file_write (fde->file, f->R.rsi, f->R.rdx);
-				filesys_lock_release ();
 			}
 			break;
 		
@@ -291,9 +277,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 				break;
 
 			if (f->R.rdi == fde->fd) {
-				filesys_lock_acquire ();
 				file_seek (fde->file, f->R.rsi);
-				filesys_lock_release ();
 			}
 			break;
 
@@ -307,9 +291,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 				break;
 
 			if (f->R.rdi == fde->fd) {
-				filesys_lock_acquire ();
 				f->R.rax = file_tell(fde->file);
-				filesys_lock_release ();
 			}
 			break;
 
@@ -326,9 +308,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			}
 			
 			if (f->R.rdi == fde->fd) {
-				filesys_lock_acquire ();
 				file_close (fde->file);
-				filesys_lock_release ();
 				list_remove (&fde->elem);
 				free (fde);
 			}
@@ -355,9 +335,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			if (copy_fde != NULL) {
 				int open_cnt = count_open_file (copy_fde);
 				if (open_cnt < 2) {
-					filesys_lock_acquire ();
 					file_close (copy_fde->file);
-					filesys_lock_release ();
 				}
 			}
 			/* fde가 없으면 새로 할당 */

@@ -243,25 +243,24 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
-		page->frame = NULL;
-		palloc_free_page(frame->kva);
-		free(frame);
-		return false;
-	}
-
+	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) 
+		goto pml4_fail;
 
 	  /* 페이지 내용을 준비한다.
      * UNINIT 페이지라면 최초 초기화와 lazy loading이 수행된다. */
-    // if (!swap_in (page, frame->kva)) {
-    //     pml4_clear_page (thread_current ()->pml4, page->va);
-    //     page->frame = NULL;
-    //     palloc_free_page (frame->kva);
-    //     free (frame);
-    //     return false;
-    // }
+    if (!swap_in (page, frame->kva))
+        goto swap_in_fail;
 
-	return swap_in (page, frame->kva);
+	return true;
+
+swap_in_fail:
+	pml4_clear_page (thread_current ()->pml4, page->va);
+
+pml4_fail:
+	page->frame = NULL;
+	palloc_free_page (frame->kva);
+	free (frame);
+	return false;
 }
 
 /* Initialize new supplemental page table */
@@ -280,26 +279,21 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
     	struct page *page = hash_entry(hash_cur(&i), struct page, elem);
 		struct page *copy_page = malloc(sizeof *page);
 		if (copy_page == NULL)
-			continue;
+			return false;
 		
-		page_duplicate(copy_page, page);
+		if(!page_duplicate(copy_page, page)){
+			free (copy_page);
+			return false;
+		}
+		
 		hash_insert(&dst->spt_hash, &copy_page->elem);
 	}
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
-	/* TODO: Destroy all the supplemental_page_table hold by thread and
-	 * TODO: writeback all the modified contents to the storage. */
-	// struct hash_iterator i;
-	// hash_first(&i, &spt->spt_hash);
-	// /* 해시테이블을 순회해서 모든 페이지 삭제 */
-	// while (hash_next(&i)) {
-    // 	struct page *page = hash_entry(hash_cur(&i), struct page, elem);
-	// 	spt_remove_page(spt, page);
-	// 	destroy(page);
-	// }
 	hash_clear(&spt->spt_hash, destructor);
 }
 
@@ -323,14 +317,50 @@ bool page_duplicate(struct page *dst, const struct page *src) {
 	*dst = *src;
 	if (src->frame != NULL) {
 		/* frame이 매핑되어있는 경우 할당 및 복제 */
-		if (!vm_do_claim_page(dst))
+		struct frame *copy_frame = vm_get_frame();
+		if(copy_frame == NULL)
 			return false;
 
-		dst->frame->kva = src->frame->kva;
+		/* Set links */
+		copy_frame->page = dst;
+		dst->frame = copy_frame;
+
+		memcpy(copy_frame->kva, src->frame->kva, PGSIZE);
+
+		if(!pml4_set_page(thread_current()->pml4, dst->va, copy_frame->kva, dst->writable)) {
+			palloc_free_page(copy_frame->kva);
+			free(copy_frame);
+			dst->frame = NULL;
+			return false;
+		}
 		/* swap out일 때 나중에 고려*/
 	}
 
-	/* uninit.aux인 file_info 복제 */
+	bool succ = false;
+	switch (src->operations->type) {
+		case VM_UNINIT:
+			if (src->uninit.aux != NULL)
+				succ = copy_file_info(dst, src);
+
+			if (dst->frame != NULL && !succ) {
+				dst->frame = NULL;
+				palloc_free_page(dst->frame->kva);
+				free(dst->frame);
+			}
+			break;
+		case VM_ANON:
+			succ = true;
+			break;
+		case VM_FILE:
+			break;
+		default:
+			break;
+	}
+
+	return succ;
+}
+
+bool copy_file_info(struct page *dst, const struct page *src) {
 	struct file_info *file_info = malloc(sizeof *file_info);
 	if (file_info == NULL)
 		return false;
@@ -338,11 +368,13 @@ bool page_duplicate(struct page *dst, const struct page *src) {
 	*file_info = *((struct file_info *)src->uninit.aux);
 
 	/* file_info안의 file 구조체 복제*/
-	filesys_lock_acquire();
 	file_info->file = file_duplicate(file_info->file);
-	filesys_lock_release();
-	if (file_info->file == NULL)
+	if (file_info->file == NULL) {
+		free(file_info);
 		return false;
-	
+	}
+
+	dst->uninit.aux = file_info;
+
 	return true;
 }

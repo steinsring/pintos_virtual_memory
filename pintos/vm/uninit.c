@@ -65,7 +65,20 @@ uninit_initialize (struct page *page, void *kva) {
 static void
 uninit_destroy (struct page *page) {
 	struct uninit_page *uninit = &page->uninit;
-	/* TODO: Fill this function.
-	 * TODO: If you don't have anything to do, just return. */
-	free(uninit->aux);
+
+	if (page->frame == NULL)
+		return;
+
+	pml4_clear_page(thread_current()->pml4, page->va);
+	palloc_free_page(page->frame->kva);
+	free(page->frame);
+
+	if (uninit->aux == NULL)
+		return;
+	
+	struct file_info *file_info = uninit->aux;
+	file_close(file_info->file);
+	free(file_info);
+
+
 }

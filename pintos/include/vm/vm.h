@@ -121,5 +121,6 @@ void spt_lock_release();
 
 /* duplicate */
 bool page_duplicate(struct page *dst, const struct page *src);
+bool copy_file_info(struct page *dst, const struct page *src);
 
 #endif  /* VM_VM_H */
