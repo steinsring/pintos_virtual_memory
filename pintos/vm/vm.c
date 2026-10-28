@@ -58,7 +58,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	
-	spt_lock_acquire();
 	struct page *page = malloc (sizeof *page);
 	if (page==NULL)
 		return false;
@@ -83,27 +82,31 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		if(!spt_insert_page(spt,page))
 			goto err;
 	}
-	spt_lock_release();
 	return true;
 
 err:
 	free(page);
-	spt_lock_release();
 	return false;
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
+spt_find_page (struct supplemental_page_table *spt, void *va) {
 	void *start_va = pg_round_down(va);
 	struct page item = { .va = start_va };
+
+	spt_lock_acquire ();
 	struct hash_elem *e = hash_find(&spt->spt_hash, &item.elem);
-	if (e == NULL)
+
+	if (e == NULL){
+		spt_lock_release ();
 		return NULL;
+	}
+		
+
+	struct page *page = hash_entry(e, struct page, elem);
+	spt_lock_release ();
 	
-	page = hash_entry(e, struct page, elem);
 	if (page == NULL)
 		return NULL;
 	
@@ -113,12 +116,19 @@ spt_find_page (struct supplemental_page_table *spt, void *va UNUSED) {
 /* Insert PAGE into spt with validation. */
 bool
 spt_insert_page (struct supplemental_page_table *spt, struct page *page ) {
-	return hash_insert (&spt->spt_hash, &page->elem) == NULL;
+	spt_lock_acquire ();
+	bool success = hash_insert (&spt->spt_hash, &page->elem) == NULL;	
+		
+	spt_lock_release ();
+	return success;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
-	hash_delete (&spt->spt_hash, &page->elem);
+	spt_lock_acquire ();
+    hash_delete (&spt->spt_hash, &page->elem);
+    spt_lock_release ();
+
 	vm_dealloc_page (page);
 }
 
@@ -177,27 +187,26 @@ vm_handle_wp (struct page *page UNUSED) {
 }
 
 /* Return true on success */
+//not_present 
+// - true: 페이지 테이블에 필요한 매핑이 없는 상황
+// - false : 매핑은 존재하지만 접근 권한등의 문제로 인해 발생한 fault
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user, bool write, bool not_present UNUSED) {
-
-	if (is_kernel_vaddr(addr))
-		return false;
-	
+		bool user, bool write, bool not_present) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *page = NULL;
+
+	if(addr==NULL||is_kernel_vaddr (addr)){
+		return false;
+	}
+
+	if (!not_present)
+        return false;
+
+	struct page *page = spt_find_page(spt, addr);
+
+	if (page == NULL||(write && !page->writable))
+		return false;
 	
-	spt_lock_acquire();
-	page = spt_find_page(spt, addr);
-	spt_lock_release();
-	/* 이후 stack growth 처리*/
-	if (page == NULL)
-		return false;
-
-	/* write 불가에 쓰기 시도*/
-	if (write && !page->writable)
-		return false;
-
 	return vm_do_claim_page (page);
 }
 
@@ -212,14 +221,12 @@ vm_dealloc_page (struct page *page) {
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page (void *va) {
-	/* TODO: Fill this function */
-	spt_lock_acquire();
-	struct page *page = spt_find_page(&thread_current()->spt, va);
-	spt_lock_release();
-	if (page == NULL)
-		return false;
+    struct page *page = spt_find_page (&thread_current ()->spt, va);
 
-	return vm_do_claim_page (page);
+    if (page == NULL)
+        return false;
+
+    return vm_do_claim_page (page);
 }
 
 /* Claim the PAGE and set up the mmu. */
@@ -242,6 +249,17 @@ vm_do_claim_page (struct page *page) {
 		free(frame);
 		return false;
 	}
+
+
+	  /* 페이지 내용을 준비한다.
+     * UNINIT 페이지라면 최초 초기화와 lazy loading이 수행된다. */
+    // if (!swap_in (page, frame->kva)) {
+    //     pml4_clear_page (thread_current ()->pml4, page->va);
+    //     page->frame = NULL;
+    //     palloc_free_page (frame->kva);
+    //     free (frame);
+    //     return false;
+    // }
 
 	return swap_in (page, frame->kva);
 }
