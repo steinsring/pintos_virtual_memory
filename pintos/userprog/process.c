@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "threads/malloc.h"
+#include "vm/vm.h"
 #ifdef VM
 #include "vm/vm.h"
 #include "hash.h"
@@ -940,6 +941,8 @@ setup_stack (struct intr_frame *if_) {
 		return false;
 	}
 	//만들고 바로 매핑 시켜줌
+	spt_lock_acquire();
+
 	if (!vm_claim_page(stack_bottom)){
 		struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
         if (page != NULL) {
@@ -947,6 +950,9 @@ setup_stack (struct intr_frame *if_) {
         }
         return false;
 	}
+
+	spt_lock_release();
+	
 	if_->rsp = USER_STACK;
 	return true;
 }
