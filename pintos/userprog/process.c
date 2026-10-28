@@ -827,6 +827,40 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+
+	/* TODO 1: aux에서 파일 읽기에 필요한 정보를 꺼낸다. */
+	struct file_info *info = aux;
+
+    /* TODO 2: 내용을 써넣을 프레임의 커널 가상 주소를 구한다. */
+	void *kva = page->frame->kva; 
+
+    /* TODO 3: 파일 시스템 락을 잡고,
+     * 지정한 파일의 지정한 오프셋에서 지정한 크기만큼 읽는다.
+     * 실제로 읽은 바이트 수를 저장하고 락을 해제한다. */
+	filesys_lock_acquire();
+	off_t bytes = file_read_at (
+		info->file,
+		kva,
+		info->page_read_bytes,
+		info->ofs
+	);
+
+    /* TODO 4: 요청한 크기만큼 읽었는지 확인한다.
+     * 실패했다면 이 함수가 소비하는 보조 정보를 해제하고
+     * 실패를 반환한다. */
+	if (bytes != (off_t) info->page_read_bytes) {
+		free(info);
+		return false;
+	}
+
+    /* TODO 5: 파일 내용을 읽어 넣은 영역 바로 뒤부터,
+     * 남은 영역을 0으로 채운다. 다음 값을 노출시키지 않기 위해(?) */
+	memset((uint8_t *) kva + info->page_read_bytes, 0, info->page_zero_bytes);
+
+    /* TODO 6: 더 이상 필요 없는 보조 정보를 해제하고
+     * 성공을 반환한다. */
+	free(info);
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
