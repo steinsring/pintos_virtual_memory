@@ -62,9 +62,24 @@ uninit_initialize (struct page *page, void *kva) {
  * to other page objects, it is possible to have uninit pages when the process
  * exit, which are never referenced during the execution.
  * PAGE will be freed by the caller. */
-static void
+/* TODO: Fill this function.
+	 * TODO: If you don't have anything to do, just return. */
+	 static void
 uninit_destroy (struct page *page) {
 	struct uninit_page *uninit UNUSED = &page->uninit;
-	/* TODO: Fill this function.
-	 * TODO: If you don't have anything to do, just return. */
+	struct file_info *info = uninit->aux;
+
+	if (info == NULL)
+		return;
+
+	if (info->file != NULL){
+		filesys_lock_acquire();
+		file_close(info->file);
+		filesys_lock_release();
+	}
+
+	free(info);
+	uninit->aux = NULL;
+
+	
 }
