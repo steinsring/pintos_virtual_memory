@@ -47,7 +47,7 @@ static bool
 uninit_initialize (struct page *page, void *kva) {
 	struct uninit_page *uninit = &page->uninit;
 
-	//uninit_initialize 멤버변수를 지역변수로 꺼냄
+	//나중에 union이 덮어써져도 사용할 수 있도록 uninit_initialize 멤버변수를 지역변수로 꺼냄
 	/* Fetch first, page_initialize may overwrite the values */
 	vm_initializer *init = uninit->init;
 	void *aux = uninit->aux;
