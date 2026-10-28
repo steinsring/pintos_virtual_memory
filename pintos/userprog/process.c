@@ -822,23 +822,31 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
+//페이지랑 프레임 가진 페이지 만들어줌 -> 파일정보가 없음 -> 페이지 초기화할 때 파일 정보도 넣어줌
 static bool
 lazy_load_segment (struct page *page, void *aux) {
-	struct file_info *file_info = aux;
-	filesys_lock_acquire();
-	size_t read_bytes = file_read_at(file_info->file, 
-									page->frame->kva, 
-									file_info->page_read_bytes, 
-									file_info->ofs);
-	filesys_lock_release();
-	if (read_bytes != file_info->page_read_bytes) {
-		free(file_info);
-		return false;
-	}
-	void *end_of_read = (void *)((char *)page->frame->kva + file_info->page_read_bytes);
-	memset(end_of_read, 0, file_info->page_zero_bytes);
+	/* TODO: Load the segment from the file */
+	/* TODO: This called when the first page fault occurs on address VA. */
+	/* TODO: VA is available when calling this function. */
+	struct file_info *info = (struct file_info *)aux;
+	
+	//info에서 파일,오프셋,읽을 바이트 수 가져옴
+	struct file *file = info->file;
+    off_t ofs = info->ofs;
+    size_t page_read_bytes = info->page_read_bytes;
+    size_t page_zero_bytes = info->page_zero_bytes;
+	
+	//물리 프레임(page->frame->kva) 위치로 파일 내용 읽어오기
+	if (file_read_at(file, page->frame->kva, page_read_bytes, ofs) != (int) page_read_bytes) {
+        free(info); // 실패 시 메모리 해제
+        return false;
+    }
+	
+	//남은 영역 0으로 채우기
+	memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes);
 
-	free(file_info);
+	//성공여부 반환
+	free(info);
 	return true;
 }
 
@@ -856,6 +864,8 @@ lazy_load_segment (struct page *page, void *aux) {
  *
  * Return true if successful, false if a memory allocation error
  * or disk read error occurs. */
+// 초기화할 때 파일 정보 넣어줌 
+//파일 구조체, 파일 중간에 있는 페이지 정보 -> 오프셋 , 끝나는 곳 위치가 read_bytes 
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
@@ -868,18 +878,33 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		struct file_info *file_info = malloc(sizeof *file_info);
-		init_file_info(file_info, file, next_ofs, page_read_bytes, page_zero_bytes);
+		/* TODO: Set up aux to pass information to the lazy_load_segment. */
+		struct file_info *aux = malloc(sizeof(struct file_info));
+		if(aux==NULL){
+			return false;
+		}
+		//load()에서 file_close(file) 호출되면 기존 파일 핸들이 닫힘
+		aux->file = file_reopen (file);
+        if (aux->file == NULL) {
+            free (aux);
+            return false;
+        }
+		aux->ofs = ofs;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, file_info)) //매핑만 해줌
-			return false;
+					writable, lazy_load_segment, aux)) {
+						file_close (aux->file);
+						free(aux);
+						return false;
+					}			
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
-		next_ofs += + PGSIZE;
+		ofs += page_read_bytes;
 	}
 	return true;
 }
@@ -903,23 +928,13 @@ setup_stack (struct intr_frame *if_) {
 	}
 	//만들고 바로 매핑 시켜줌
 	if (!vm_claim_page(stack_bottom)){
-		spt_lock_acquire();
 		struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
         if (page != NULL) {
             spt_remove_page(&thread_current()->spt, page);
         }
-		spt_lock_release();
         return false;
 	}
 	if_->rsp = USER_STACK;
 	return true;
-}
-
-void
-init_file_info(struct file_info *file_info, const struct file *file, const off_t ofs, const size_t p_read_bytes, const size_t p_zero_bytes) {
-	file_info->file = file;
-	file_info->ofs = ofs;
-	file_info->page_read_bytes = p_read_bytes;
-	file_info->page_zero_bytes = p_zero_bytes;
 }
 #endif /* VM */
