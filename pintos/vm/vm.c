@@ -253,7 +253,7 @@ vm_do_claim_page (struct page *page) {
 		free(frame);
 		return false;
 	}
-	}
+
 
 	  /* 페이지 내용을 준비한다.
      * UNINIT 페이지라면 최초 초기화와 lazy loading이 수행된다. */
