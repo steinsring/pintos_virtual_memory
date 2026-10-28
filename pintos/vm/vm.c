@@ -281,6 +281,19 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	while (!hash_empty (&spt->spt_hash)){
+		struct hash_iterator iter;
+		hash_first (&iter, &spt->spt_hash);
+
+		struct hash_elem *elem = hash_next (&iter);
+		struct page *page = hash_entry (elem, struct page, elem);
+
+		spt_remove_page (spt, page);
+	}
+	
+	/* 모든 페이지를 제거. 해시 내부 공간만 해제 */
+    hash_destroy (&spt->spt_hash, NULL);
+
 }
 
 /* spt lock */
