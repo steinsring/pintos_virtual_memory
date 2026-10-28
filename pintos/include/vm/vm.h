@@ -47,10 +47,9 @@ struct page {
 	void *va;              /* Address in terms of user space */
 	const struct page_operations *operations;
 	struct frame *frame;   /* Back reference for frame */
+
 	struct hash_elem elem; /* 해시 테이블 부품 */
 	bool writable;			/* 쓰기 권한 */
-
-	/* Your implementation */
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -114,5 +113,10 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
+
+/* spt lock*/
+void spt_lock_init();
+void spt_lock_acquire();
+void spt_lock_release();
 
 #endif  /* VM_VM_H */

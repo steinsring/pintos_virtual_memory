@@ -26,20 +26,6 @@ vm_init (void) {
 	spt_lock_init();
 }
 
-static struct lock spt_lock;
-
-void spt_lock_init() {
-	lock_init(&spt_lock);
-}
-
-void spt_lock_acquire() {
-	lock_acquire(&spt_lock);
-}
-
-void spt_lock_release() {
-	lock_release(&spt_lock);
-}
-
 /* Get the type of the page. This function is useful if you want to know the
  * type of the page after it will be initialized.
  * This function is fully implemented now. */
@@ -71,16 +57,13 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	ASSERT (VM_TYPE(type) != VM_UNINIT);
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-
+	
+	struct page *page = malloc (sizeof *page);
+	if (page==NULL)
+		return false;
 	/* Check whether the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
-		struct page *page = malloc (sizeof *page);
-		if (page==NULL)
-			goto err;
-
+		
 		bool(*initializer)(struct page * , enum vm_type, void *) = NULL;
 		switch(VM_TYPE(type)){
 			case VM_ANON:
@@ -90,25 +73,19 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				initializer = file_backed_initializer;
 				break;
 			default:
-				free(page);
 				goto err;
 		}
 
-		uninit_new (page,upage,init,type,aux,initializer);
+		uninit_new (page, upage, init, type, aux, initializer);
 		page->writable = writable;
 
-		/* TODO: Insert the page into the spt. */
-		if(!spt_insert_page(spt,page)){
-			free(page);
+		if(!spt_insert_page(spt,page))
 			goto err;
-		}
-		return true;
-
 	}
-
 	return true;
 
 err:
+	free(page);
 	return false;
 }
 
@@ -266,14 +243,16 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(thread_current()->pml4,page->va,frame->kva,page->writable)){
+	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
 		page->frame = NULL;
-		palloc_free_page (frame->kva);
-		free (frame);
+		palloc_free_page(frame->kva);
+		free(frame);
 		return false;
 	}
+
 	return swap_in (page, frame->kva);
 }
+
 
 /* Initialize new supplemental page table */
 void
@@ -292,4 +271,19 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+/* spt lock */
+static struct lock spt_lock;
+
+void spt_lock_init() {
+	lock_init(&spt_lock);
+}
+
+void spt_lock_acquire() {
+	lock_acquire(&spt_lock);
+}
+
+void spt_lock_release() {
+	lock_release(&spt_lock);
 }
