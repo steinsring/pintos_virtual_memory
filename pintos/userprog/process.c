@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "threads/malloc.h"
+#include "vm/vm.h"
 #ifdef VM
 #include "vm/vm.h"
 #include "hash.h"
@@ -828,26 +829,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
-	struct file_info *info = (struct file_info *)aux;
-	
-	//info에서 파일,오프셋,읽을 바이트 수 가져옴
-	struct file *file = info->file;
-    off_t ofs = info->ofs;
-    size_t page_read_bytes = info->page_read_bytes;
-    size_t page_zero_bytes = info->page_zero_bytes;
-	
-	//물리 프레임(page->frame->kva) 위치로 파일 내용 읽어오기
-	if (file_read_at(file, page->frame->kva, page_read_bytes, ofs) != (int) page_read_bytes) {
-        free(info); // 실패 시 메모리 해제
-        return false;
-    }
-	
-	//남은 영역 0으로 채우기
-	memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes);
-
-	//성공여부 반환
-	free(info);
-	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -873,33 +854,33 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
 
+	struct file_info *info = malloc(sizeof *info);
+
+	if(info == NULL)
+		return false;
+		
 	off_t next_ofs = ofs;
 	while (read_bytes > 0 || zero_bytes > 0) {
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		struct file_info *aux = malloc(sizeof(struct file_info));
-		if(aux==NULL){
+		void *aux = NULL;
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
+					writable, lazy_load_segment, aux)) //매핑만 해줌
+			return false;
+
+		info->file = file;
+		info->ofs = ofs;
+		info->page_read_bytes = page_read_bytes;
+		info->page_zero_bytes =page_zero_bytes;
+
+		/* SPT에 페이지와 최초 로딩 방법을 등록. RAM 확보와 매핑은 나중에 수행. */
+		if (!vm_alloc_page_with_initializer 
+			(VM_ANON, upage,writable, lazy_load_segment, info)){
+			free(info);
 			return false;
 		}
-		//load()에서 file_close(file) 호출되면 기존 파일 핸들이 닫힘
-		aux->file = file_reopen (file);
-        if (aux->file == NULL) {
-            free (aux);
-            return false;
-        }
-		aux->ofs = ofs;
-		aux->page_read_bytes = page_read_bytes;
-		aux->page_zero_bytes = page_zero_bytes;
-
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux)) {
-						file_close (aux->file);
-						free(aux);
-						return false;
-					}			
-
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
@@ -927,6 +908,8 @@ setup_stack (struct intr_frame *if_) {
 		return false;
 	}
 	//만들고 바로 매핑 시켜줌
+	spt_lock_acquire();
+
 	if (!vm_claim_page(stack_bottom)){
 		struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
         if (page != NULL) {
@@ -934,6 +917,9 @@ setup_stack (struct intr_frame *if_) {
         }
         return false;
 	}
+
+	spt_lock_release();
+	
 	if_->rsp = USER_STACK;
 	return true;
 }

@@ -62,6 +62,8 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	if (page==NULL)
 		return false;
 	/* Check whether the upage is already occupied or not. */
+	spt_lock_acquire();
+
 	if (spt_find_page (spt, upage) == NULL) {
 		
 		bool(*initializer)(struct page * , enum vm_type, void *) = NULL;
@@ -206,6 +208,8 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 
 	if (page == NULL||(write && !page->writable))
 		return false;
+	
+	
 
 	return vm_do_claim_page (page);
 }
@@ -250,9 +254,19 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 
-	return swap_in (page, frame->kva);
-}
 
+	  /* 페이지 내용을 준비한다.
+     * UNINIT 페이지라면 최초 초기화와 lazy loading이 수행된다. */
+    if (!swap_in (page, frame->kva)) {
+        pml4_clear_page (thread_current ()->pml4, page->va);
+        page->frame = NULL;
+        palloc_free_page (frame->kva);
+        free (frame);
+        return false;
+    }
+
+	return true;
+}
 
 /* Initialize new supplemental page table */
 void

@@ -65,7 +65,7 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
-	void *kva; // 커널 가상 주소
+	void *kva; // 커널 가상 주소(물리 주소)
 	struct page *page;
 };
 
