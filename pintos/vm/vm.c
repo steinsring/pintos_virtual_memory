@@ -289,7 +289,12 @@ supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 		struct page *page = hash_entry (elem, struct page, elem);
 
 		spt_remove_page (spt, page);
+		
+		destroy(page);
+
 	}
+	
+	//hash_clear();
 	
 	/* 모든 페이지를 제거. 해시 내부 공간만 해제 */
     hash_destroy (&spt->spt_hash, NULL);
