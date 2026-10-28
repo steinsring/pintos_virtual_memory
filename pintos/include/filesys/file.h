@@ -12,6 +12,13 @@ struct fd_entry {
   struct list_elem elem;
 };
 
+struct file_info {
+	struct file *file;
+	off_t ofs;
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+};
+
 /* Opening and closing files. */
 struct file *file_open (struct inode *);
 struct file *file_reopen (struct file *);
