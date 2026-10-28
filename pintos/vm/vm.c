@@ -186,14 +186,25 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user, bool write, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
-	/* TODO: Validate the fault */
-	/* TODO: Your code goes here */
+	    
+	/* 1. 잘못된 주소 */
+    if (addr == NULL || !is_user_vaddr (addr))
+        return false;
 
-	page = spt_find_page(spt, addr);
-	/* 이후 stack growth 처리*/
-	if (page == NULL)
-		return false;
+    /* 2. 이미 매핑된 페이지의 권한 위반은 처리하지 않는다. */
+    if (!not_present)
+        return false;
+
+    /* 3. 등록된 페이지인지 확인 */
+    struct page *page = spt_find_page (spt, addr);
+    if (page == NULL)
+        return false;
+
+    /* 4. 읽기 전용 페이지에 대한 쓰기 거절 */
+    if (write && !page->writable)
+        return false;
+	
+	/* 5. 다른 예외처리*/
 
 	return vm_do_claim_page (page);
 }
