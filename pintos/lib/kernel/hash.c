@@ -406,3 +406,9 @@ bool compare_key(const struct hash_elem *a,	const struct hash_elem *b, void *aux
 
 	return p_a->va < p_b->va;
 }
+
+/* 해시 삭제 함수 */
+void destructor (struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry(e, struct page, elem);
+	vm_dealloc_page(page);
+}

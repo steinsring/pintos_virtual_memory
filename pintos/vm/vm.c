@@ -118,7 +118,6 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page ) {
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
-	
 	hash_delete (&spt->spt_hash, &page->elem);
 	vm_dealloc_page (page);
 }
@@ -255,8 +254,19 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src UNUSED) {
+	struct hash_iterator i;
+	hash_first(&i, &src->spt_hash);
+	/* 해시테이블을 순회해서 모든 페이지 복제 */
+	while (hash_next(&i) != NULL) {
+    	struct page *page = hash_entry(hash_cur(&i), struct page, elem);
+		struct page *copy_page = malloc(sizeof *page);
+		if (copy_page == NULL)
+			continue;
+		
+		page_duplicate(copy_page, page);
+		hash_insert(&dst->spt_hash, &copy_page->elem);
+	}
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -264,6 +274,15 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	// struct hash_iterator i;
+	// hash_first(&i, &spt->spt_hash);
+	// /* 해시테이블을 순회해서 모든 페이지 삭제 */
+	// while (hash_next(&i)) {
+    // 	struct page *page = hash_entry(hash_cur(&i), struct page, elem);
+	// 	spt_remove_page(spt, page);
+	// 	destroy(page);
+	// }
+	hash_clear(&spt->spt_hash, destructor);
 }
 
 /* spt lock */
@@ -279,4 +298,33 @@ void spt_lock_acquire() {
 
 void spt_lock_release() {
 	lock_release(&spt_lock);
+}
+
+/* page 복제 */
+bool page_duplicate(struct page *dst, const struct page *src) {
+	*dst = *src;
+	if (src->frame != NULL) {
+		/* frame이 매핑되어있는 경우 할당 및 복제 */
+		if (!vm_do_claim_page(dst))
+			return false;
+
+		dst->frame->kva = src->frame->kva;
+		/* swap out일 때 나중에 고려*/
+	}
+
+	/* uninit.aux인 file_info 복제 */
+	struct file_info *file_info = malloc(sizeof *file_info);
+	if (file_info == NULL)
+		return false;
+	
+	*file_info = *((struct file_info *)src->uninit.aux);
+
+	/* file_info안의 file 구조체 복제*/
+	filesys_lock_acquire();
+	file_info->file = file_duplicate(file_info->file);
+	filesys_lock_release();
+	if (file_info->file == NULL)
+		return false;
+	
+	return true;
 }

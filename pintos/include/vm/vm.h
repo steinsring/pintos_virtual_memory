@@ -119,4 +119,7 @@ void spt_lock_init();
 void spt_lock_acquire();
 void spt_lock_release();
 
+/* duplicate */
+bool page_duplicate(struct page *dst, const struct page *src);
+
 #endif  /* VM_VM_H */

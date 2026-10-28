@@ -869,11 +869,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		struct file_info *file_info = malloc(sizeof *file_info);
+		if (file_info == NULL)
+			return false;
+		
 		init_file_info(file_info, file, next_ofs, page_read_bytes, page_zero_bytes);
 
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, file_info)) //매핑만 해줌
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, file_info)) {
+			free(file_info);
 			return false;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
