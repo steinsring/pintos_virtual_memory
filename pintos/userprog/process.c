@@ -844,6 +844,7 @@ lazy_load_segment (struct page *page, void *aux) {
 		info->page_read_bytes,
 		info->ofs
 	);
+	filesys_lock_release();
 
     /* TODO 4: 요청한 크기만큼 읽었는지 확인한다.
      * 실패했다면 이 함수가 소비하는 보조 정보를 해제하고
