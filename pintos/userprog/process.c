@@ -867,11 +867,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		info->page_read_bytes = page_read_bytes;
 		info->page_zero_bytes =page_zero_bytes;
 
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, info)) //매핑만 해줌
-
+		/* SPT에 페이지와 최초 로딩 방법을 등록. RAM 확보와 매핑은 나중에 수행. */
+		if (!vm_alloc_page_with_initializer 
+			(VM_ANON, upage,writable, lazy_load_segment, info)){
+			free(info);
 			return false;
-
+		}
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
