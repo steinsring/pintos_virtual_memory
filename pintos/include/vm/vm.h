@@ -114,4 +114,9 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
+/* spt lock*/
+void spt_lock_init();
+void spt_lock_acquire();
+void spt_lock_release();
+
 #endif  /* VM_VM_H */

@@ -824,14 +824,13 @@ install_page (void *upage, void *kpage, bool writable) {
 
 static bool
 lazy_load_segment (struct page *page, void *aux) {
-	/* TODO: Load the segment from the file */
-	/* TODO: This called when the first page fault occurs on address VA. */
-	/* TODO: VA is available when calling this function. */
 	struct file_info *file_info = aux;
+	filesys_lock_acquire();
 	size_t read_bytes = file_read_at(file_info->file, 
 									page->frame->kva, 
 									file_info->page_read_bytes, 
 									file_info->ofs);
+	filesys_lock_release();
 	if (read_bytes != file_info->page_read_bytes) {
 		free(file_info);
 		return false;
@@ -841,7 +840,6 @@ lazy_load_segment (struct page *page, void *aux) {
 
 	free(file_info);
 	return true;
-
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -867,13 +865,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 	off_t next_ofs = ofs;
 	while (read_bytes > 0 || zero_bytes > 0) {
-		/* Do calculate how to fill this page.
-		 * We will read PAGE_READ_BYTES bytes from FILE
-		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		/* TODO: Set up aux to pass information to the lazy_load_segment. */
 		struct file_info *file_info = malloc(sizeof *file_info);
 		init_file_info(file_info, file, next_ofs, page_read_bytes, page_zero_bytes);
 
@@ -903,21 +897,18 @@ setup_stack (struct intr_frame *if_) {
 	bool success = true;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE); //stack용 페이지 주소.
 
-	/* TODO: Map the stack on stack_bottom and claim the page immediately.
-	 * TODO: If success, set the rsp accordingly.
-	 * TODO: You should mark the page is stack. */
-	/* TODO: Your code goes here */
-
 	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
 	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
 		return false;
 	}
 	//만들고 바로 매핑 시켜줌
 	if (!vm_claim_page(stack_bottom)){
+		spt_lock_acquire();
 		struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
         if (page != NULL) {
             spt_remove_page(&thread_current()->spt, page);
         }
+		spt_lock_release();
         return false;
 	}
 	if_->rsp = USER_STACK;
