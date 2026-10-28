@@ -186,7 +186,7 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user, bool write, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	    
+	
 	/* 1. 잘못된 주소 */
     if (addr == NULL || !is_user_vaddr (addr))
         return false;
@@ -196,9 +196,16 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
         return false;
 
     /* 3. 등록된 페이지인지 확인 */
-    struct page *page = spt_find_page (spt, addr);
-    if (page == NULL)
-        return false;
+	spt_lock_acquire();
+    
+	struct page *page = spt_find_page (spt, addr);
+    
+	spt_lock_release();
+
+	if (page == NULL)
+		return false;
+	
+	
 
     /* 4. 읽기 전용 페이지에 대한 쓰기 거절 */
     if (write && !page->writable)
@@ -284,4 +291,18 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+static struct lock spt_lock;
+
+void spt_lock_init() {
+	lock_init(&spt_lock);
+}
+
+void spt_lock_acquire() {
+	lock_acquire(&spt_lock);
+}
+
+void spt_lock_release() {
+	lock_release(&spt_lock);
 }
