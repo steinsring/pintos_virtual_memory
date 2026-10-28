@@ -858,9 +858,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct file_info *info = malloc (sizeof *info);
+		if (info == NULL)
+			return false;
+
+		info->file = file;
+		info->ofs = ofs;
+		info->page_read_bytes = page_read_bytes;
+		info->page_zero_bytes =page_zero_bytes;
+
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux)) //매핑만 해줌
+					writable, lazy_load_segment, info)) //매핑만 해줌
 
 			return false;
 
@@ -868,6 +876,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;
 	}
 	return true;
 }
