@@ -352,6 +352,7 @@ bool page_duplicate(struct page *dst, const struct page *src) {
 			succ = true;
 			break;
 		case VM_FILE:
+			succ = true;
 			break;
 		default:
 			break;

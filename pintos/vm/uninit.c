@@ -79,6 +79,4 @@ uninit_destroy (struct page *page) {
 	struct file_info *file_info = uninit->aux;
 	file_close(file_info->file);
 	free(file_info);
-
-
 }

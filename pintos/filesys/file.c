@@ -92,9 +92,14 @@ file_read (struct file *file, void *buffer, off_t size) {
  * The file's current position is unaffected. */
 off_t
 file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
-	filesys_lock_acquire();
+	bool filesys_lock = have_filesys_lock();
+	if (!filesys_lock)
+		filesys_lock_acquire();
+	
 	off_t bytes_read = inode_read_at (file->inode, buffer, size, file_ofs);
-	filesys_lock_release();
+
+	if (!filesys_lock)
+		filesys_lock_release();
 	return bytes_read;
 }
 
@@ -124,7 +129,14 @@ file_write (struct file *file, const void *buffer, off_t size) {
 off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
 		off_t file_ofs) {
+	bool filesys_lock = have_filesys_lock();
+	if (!filesys_lock)
+		filesys_lock_acquire();
+		
 	off_t bytes_write = inode_write_at (file->inode, buffer, size, file_ofs);
+
+	if (!filesys_lock)
+		filesys_lock_release();
 	return bytes_write;
 }
 
@@ -198,4 +210,9 @@ filesys_lock_acquire (void) {
 void
 filesys_lock_release (void) {
 	lock_release (&filesys_lock);
+}
+
+bool
+have_filesys_lock() {
+	return filesys_lock.holder == thread_current();
 }

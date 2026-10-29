@@ -75,16 +75,17 @@ is_valid (struct intr_frame *f UNUSED) {
 
 		case SYS_READ :
 		case SYS_WRITE : {
+			/* buffer가 커널주소인가? */
 			if (f->R.rsi == NULL || is_kernel_vaddr (f->R.rsi))
 				return false;
 			if ((uint64_t)KERN_BASE - f->R.rsi < f->R.rdx)
 				return false;
 			uint64_t page_addr = pg_round_down (f->R.rsi);
 			while (page_addr <= pg_round_down (f->R.rsi + f->R.rdx - 1)) {
-				if (!pml4_get_page (curr->pml4, page_addr))
+				if (!pml4_get_page (curr->pml4, page_addr) && !spt_find_page(&curr->spt, page_addr))
 					return false;
 				if (f->R.rax == SYS_READ) {
-					if (!is_writable (pml4e_walk (curr->pml4, page_addr, 0)))
+					if (!is_writable (pml4e_walk (curr->pml4, page_addr, 0)) && !spt_find_page(&curr->spt, page_addr)->writable)
 						return false;
 				}
 				page_addr += PGSIZE;

@@ -37,5 +37,6 @@ off_t file_length (struct file *);
 void filesys_lock_init ();
 void filesys_lock_acquire ();
 void filesys_lock_release ();
+bool have_filesys_lock();
 
 #endif /* filesys/file.h */
