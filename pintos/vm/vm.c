@@ -48,9 +48,9 @@ static struct frame *vm_evict_frame (void);
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
-bool
 // 가상 페이지를 관리하겠다.
 // 페이지를 지금 RAM에 올리는 함수 X 나중에 준비할 페이지의 정보를 만들어 SPT에 등록하는 함수
+bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
@@ -61,6 +61,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct page *page = malloc (sizeof *page);
 	if (page==NULL)
 		return false;
+
 	/* Check whether the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		
@@ -270,17 +271,98 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	hash_init(&spt->spt_hash, hash_key, compare_key, NULL);
 }
 
+static bool
+page_duplicate (struct page *dst, const struct page *src){
+	const struct uninit_page *u = &src->uninit; 
+
+	if (VM_TYPE (src->operations->type) == VM_UNINIT) {
+		void *new_aux = NULL;
+
+		if (u->aux != NULL) {
+		 	struct file_info *old_info = (struct file_info *)u->aux;
+
+			struct file_info *new_info = (struct file_info *)malloc(sizeof(struct file_info));
+    
+           	if (new_info == NULL) {
+                return false;  
+			}
+
+			*new_info = *old_info;
+			new_info->file = file_reopen(old_info->file);
+
+			if (new_info->file == NULL) {
+				free (new_info);
+				return false;
+			}
+			new_aux = new_info;
+		}
+		uninit_new (dst, src->va, u->init, u->type, new_aux, u->page_initializer);
+		dst->writable = src->writable;
+		return true;
+	}
+
+	bool (*initializer)(struct page *, enum vm_type, void *) = NULL;
+    enum vm_type type = page_get_type(src); 
+	 
+    if (type == VM_ANON) {
+        initializer = anon_initializer;
+    } else if (type == VM_FILE) {
+        initializer = file_backed_initializer;
+    } else {
+        return false;
+    }
+
+	uninit_new(dst, src->va, NULL, type, NULL, initializer);
+    dst->writable = src->writable;
+
+    if (!vm_do_claim_page(dst)) {
+        return false;
+    }
+
+    memcpy(dst->frame->kva, src->frame->kva, PGSIZE);
+
+    return true;
+}
+
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
+	struct hash_iterator iter;
+    hash_first (&iter, &src->spt_hash);
+
+	while (hash_next (&iter) != NULL){
+		struct hash_elem *elem = hash_cur(&iter);
+		struct page *src_page = hash_entry (elem,struct page, elem);
+		struct page *dst_page = malloc (sizeof *dst_page);
+
+        if (dst_page == NULL) {
+            return false;
+        }
+		
+		if (!page_duplicate (dst_page, src_page)) {
+            free (dst_page);
+            return false;
+        }
+
+        if (!spt_insert_page (dst, dst_page)) {
+            vm_dealloc_page (dst_page);
+            return false;
+        }
+    }
+	return true;
+}
+
+//콜백 함수
+static void
+page_destroy (struct hash_elem *elem, void *aux UNUSED) {
+    struct page *page = hash_entry (elem, struct page, elem);
+    vm_dealloc_page (page);
 }
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
-	/* TODO: Destroy all the supplemental_page_table hold by thread and
-	 * TODO: writeback all the modified contents to the storage. */
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
+	hash_clear(&spt->spt_hash,page_destroy);
 }
 
 /* spt lock */

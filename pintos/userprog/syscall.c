@@ -81,12 +81,11 @@ is_valid (struct intr_frame *f UNUSED) {
 				return false;
 			uint64_t page_addr = pg_round_down (f->R.rsi);
 			while (page_addr <= pg_round_down (f->R.rsi + f->R.rdx - 1)) {
-				if (!pml4_get_page (curr->pml4, page_addr))
-					return false;
-				if (f->R.rax == SYS_READ) {
-					if (!is_writable (pml4e_walk (curr->pml4, page_addr, 0)))
-						return false;
-				}
+				struct page *page = spt_find_page (&curr->spt, (void *) page_addr);
+				if (page == NULL)
+					return false;                       
+				if (f->R.rax == SYS_READ && !page->writable)
+					return false;                        
 				page_addr += PGSIZE;
 			}
 		}
