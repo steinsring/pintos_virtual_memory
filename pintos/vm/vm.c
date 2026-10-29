@@ -272,46 +272,87 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-	struct supplemental_page_table *src UNUSED) {
-		
-			// struct hash current = dst->spt_hash;
-			// struct hash parent = src->spt_hash;
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+                              struct supplemental_page_table *src) {
+    struct hash_iterator iter;
+    hash_first (&iter, &src->spt_hash);
 
-			// if(&current == NULL || &parent == NULL)
-			// 	return;			
-	struct hash_iterator iter;
-	hash_first(&iter, &src->spt_hash);
+    while (hash_next (&iter)) {
+        struct page *parent_page =hash_entry (hash_cur (&iter), struct page, elem);
 
-	while (hash_next (&iter)) {
-   		struct page *parent_page = hash_entry (hash_cur (&iter), struct page, elem);
+        enum vm_type type = parent_page->operations->type;
 
-    	enum vm_type type = parent_page->operations->type;
+        if (type == VM_UNINIT) {
+            struct file_info *parent_aux = parent_page->uninit.aux;
+            struct file_info *child_aux = NULL;
 
- 		if (type == VM_UNINIT) {
-        	/* 로딩 준비물을 복제해서 자식 페이지 등록 */
-    	}
+            /* 부모의 로딩 준비물을 자식 소유로 복제 */
+            if (parent_aux != NULL) {
+                child_aux = malloc (sizeof *child_aux);
+                if (child_aux == NULL)
+                    return false;
 
-    	else if (type == VM_ANON) {
-        	/* 자식 페이지 생성 및 SPT 등록 */
-        	if (!vm_alloc_page (VM_ANON,
-                        parent_page->va,
-                        parent_page->writable))
-            	return false;
+                *child_aux = *parent_aux;
 
-        	/* 등록된 자식 페이지의 주소 가져오기 */
-		    struct page *child_page = spt_find_page (dst, parent_page->va);
+                filesys_lock_acquire ();
+                child_aux->file = file_duplicate (parent_aux->file);
+                filesys_lock_release ();
 
-        /* 다음 단계: 자식 프레임 확보 후 부모 내용 복사 */
-    	}
-   		else {
-       		 /* 아직 처리하지 않는 타입 */
-    		    return false;
-    		}
-	}
-    return true;		
+                if (child_aux->file == NULL) {
+                    free (child_aux);
+                    return false;
+                }
+            }
+
+            /* 실제 로딩은 미루고 자식 SPT에 등록 */
+            if (!vm_alloc_page_with_initializer (
+                    parent_page->uninit.type,
+                    parent_page->va,
+                    parent_page->writable,
+                    parent_page->uninit.init,
+                    child_aux)) {
+
+                /* 등록에 실패했을때 파일 닫기 */
+                if (child_aux != NULL) {
+                    filesys_lock_acquire ();
+                    file_close (child_aux->file);
+                    filesys_lock_release ();
+                    free (child_aux);
+                }
+
+                return false;
+            }
+        }
+
+        else if (type == VM_ANON) {
+            /* swap된 페이지 복사는 추후 구현 */
+            if (parent_page->frame == NULL)
+                return false;
+
+            /* 자식 페이지 등록 */
+            if (!vm_alloc_page(VM_ANON,parent_page->va,parent_page->writable))
+                return false;
+
+            /* 자식 프레임 확보 및 매핑 */
+            if (!vm_claim_page(parent_page->va))
+                return false;
+
+            struct page *child_page = spt_find_page(dst, parent_page->va);
+
+            if (child_page == NULL || child_page->frame == NULL)
+                return false;
+
+            /* 부모의 현재 메모리 내용을 복제 */
+            memcpy (child_page->frame->kva,parent_page->frame->kva,PGSIZE);
+        }
+        else {
+            /* VM_FILE(?) */
+            return false;
+        }
+    }
+
+    return true;
 }
-
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
