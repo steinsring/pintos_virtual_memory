@@ -273,7 +273,43 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 /* Copy supplemental page table from src to dst */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+	struct supplemental_page_table *src UNUSED) {
+		
+			// struct hash current = dst->spt_hash;
+			// struct hash parent = src->spt_hash;
+
+			// if(&current == NULL || &parent == NULL)
+			// 	return;			
+	struct hash_iterator iter;
+	hash_first(&iter, &src->spt_hash);
+
+	while (hash_next (&iter)) {
+   		struct page *parent_page = hash_entry (hash_cur (&iter), struct page, elem);
+
+    	enum vm_type type = parent_page->operations->type;
+
+ 		if (type == VM_UNINIT) {
+        	/* 로딩 준비물을 복제해서 자식 페이지 등록 */
+    	}
+
+    	else if (type == VM_ANON) {
+        	/* 자식 페이지 생성 및 SPT 등록 */
+        	if (!vm_alloc_page (VM_ANON,
+                        parent_page->va,
+                        parent_page->writable))
+            	return false;
+
+        	/* 등록된 자식 페이지의 주소 가져오기 */
+		    struct page *child_page = spt_find_page (dst, parent_page->va);
+
+        /* 다음 단계: 자식 프레임 확보 후 부모 내용 복사 */
+    	}
+   		else {
+       		 /* 아직 처리하지 않는 타입 */
+    		    return false;
+    		}
+	}
+    return true;		
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -293,7 +329,7 @@ supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 		destroy(page);
 
 	}
-	
+
 	//hash_clear();
 	
 	/* 모든 페이지를 제거. 해시 내부 공간만 해제 */
