@@ -179,6 +179,9 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
+	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true))
+		return;
 }
 
 /* Handle the fault on write_protected page */
@@ -195,15 +198,23 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user, bool write, bool not_present) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
-	if(addr==NULL||is_kernel_vaddr (addr)){
+	if(addr == NULL||is_kernel_vaddr (addr))
 		return false;
-	}
 
 	if (!not_present)
-        return false;
+		return false;
 
 	struct page *page = spt_find_page(spt, addr);
+	/* stack growth인 경우 pml4와 spt에 등록되어 있지 않다. */
+	if (not_present && page == NULL && user) {
+		/* 접근 주소가 스택 범위 안에 있는 경우 stack growth*/
+		if ((void *)USER_STACK > addr && addr >= (char *)f->rsp - 8 && addr >= (void *)((char *)USER_STACK - (1<<20))) {
+			vm_stack_growth(addr);
+		}
+	}
 
+	page = spt_find_page(spt, addr);
+	
 	if (page == NULL||(write && !page->writable))
 		return false;
 	
