@@ -180,6 +180,7 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	addr
 }
 
 /* Handle the fault on write_protected page */
@@ -191,6 +192,7 @@ vm_handle_wp (struct page *page UNUSED) {
 //not_present 
 // - true: 페이지 테이블에 필요한 매핑이 없는 상황
 // - false : 매핑은 존재하지만 접근 권한등의 문제로 인해 발생한 fault
+// stack주소의 페이지가 없을때 기존 stack부터 현재 요청의 stack 사이는?
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user, bool write, bool not_present) {
@@ -204,9 +206,13 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
         return false;
 
 	struct page *page = spt_find_page(spt, addr);
-
+		
 	if (page == NULL||(write && !page->writable))
 		return false;
+
+	//stack 가상주소에 맞는 페이지만 할당해주면 댐.
+	if(addr >= f->rsp-8)
+		vm_stack_growth(addr);
 	
 	return vm_do_claim_page (page);
 }
@@ -345,7 +351,7 @@ bool page_duplicate(struct page *dst, const struct page *src) {
 
 	bool succ = false;
 	switch (src->operations->type) {
-		case VM_UNINIT:
+		case VM_UNINIT: 
 			if (src->uninit.aux != NULL)
 				succ = copy_file_info(dst, src);
 
