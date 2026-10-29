@@ -278,7 +278,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
     hash_first (&iter, &src->spt_hash);
 
     while (hash_next (&iter)) {
-        struct page *parent_page =hash_entry (hash_cur (&iter), struct page, elem);
+        struct page *parent_page = hash_entry (hash_cur (&iter), struct page, elem);
 
         enum vm_type type = parent_page->operations->type;
 
@@ -288,18 +288,18 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 
             /* 부모의 로딩 준비물을 자식 소유로 복제 */
             if (parent_aux != NULL) {
-                child_aux = malloc (sizeof *child_aux);
+                child_aux = malloc(sizeof *child_aux);
                 if (child_aux == NULL)
                     return false;
 
                 *child_aux = *parent_aux;
 
-                filesys_lock_acquire ();
-                child_aux->file = file_duplicate (parent_aux->file);
-                filesys_lock_release ();
+                filesys_lock_acquire();
+                child_aux->file = file_duplicate(parent_aux->file);
+                filesys_lock_release();
 
                 if (child_aux->file == NULL) {
-                    free (child_aux);
+                    free(child_aux);
                     return false;
                 }
             }
@@ -314,36 +314,36 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 
                 /* 등록에 실패했을때 파일 닫기 */
                 if (child_aux != NULL) {
-                    filesys_lock_acquire ();
+                    filesys_lock_acquire();
                     file_close (child_aux->file);
-                    filesys_lock_release ();
-                    free (child_aux);
+                    filesys_lock_release();
+                    free(child_aux);
                 }
 
                 return false;
             }
         }
 
-        else if (type == VM_ANON) {
+        else if(type == VM_ANON) {
             /* swap된 페이지 복사는 추후 구현 */
-            if (parent_page->frame == NULL)
+            if(parent_page->frame == NULL)
                 return false;
 
             /* 자식 페이지 등록 */
-            if (!vm_alloc_page(VM_ANON,parent_page->va,parent_page->writable))
+            if(!vm_alloc_page(VM_ANON,parent_page->va,parent_page->writable))
                 return false;
 
             /* 자식 프레임 확보 및 매핑 */
-            if (!vm_claim_page(parent_page->va))
+            if(!vm_claim_page(parent_page->va))
                 return false;
 
             struct page *child_page = spt_find_page(dst, parent_page->va);
 
-            if (child_page == NULL || child_page->frame == NULL)
+            if(child_page == NULL || child_page->frame == NULL)
                 return false;
 
             /* 부모의 현재 메모리 내용을 복제 */
-            memcpy (child_page->frame->kva,parent_page->frame->kva,PGSIZE);
+            memcpy(child_page->frame->kva,parent_page->frame->kva,PGSIZE);
         }
         else {
             /* VM_FILE(?) */
