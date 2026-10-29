@@ -66,19 +66,11 @@ uninit_initialize (struct page *page, void *kva) {
 	 * TODO: If you don't have anything to do, just return. */
 	 static void
 uninit_destroy (struct page *page) {
-	struct uninit_page *uninit UNUSED = &page->uninit;
-	struct file_info *info = uninit->aux;
-
-	if (info == NULL)
-		return;
-
-	if (info->file != NULL){
-		filesys_lock_acquire();
-		file_close(info->file);
-		filesys_lock_release();
+	struct uninit_page *uninit = &page->uninit;
+	if (uninit->aux != NULL) {
+		struct file_info *info = uninit->aux;
+		file_close (info->file);
+		free (info);
+		uninit->aux = NULL;
 	}
-
-	free(info);
-	uninit->aux = NULL;
-	
 }
