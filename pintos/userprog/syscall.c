@@ -19,6 +19,7 @@
 #include <string.h>
 #include "threads/malloc.h"
 #include "threads/init.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -83,9 +84,20 @@ is_valid (struct intr_frame *f UNUSED) {
 			uint64_t page_addr = pg_round_down (f->R.rsi);
 			while (page_addr <= pg_round_down (f->R.rsi + f->R.rdx - 1)) {
 				struct page *page = spt_find_page (&curr->spt, (void *) page_addr);
-				if (page == NULL)
-					return false;                       
-				if (f->R.rax == SYS_READ && !page->writable)
+				if (page == NULL) {
+					void *addr;
+					if (f->R.rsi > page_addr)
+						addr = f->R.rsi;
+					else
+						addr = page_addr;
+					
+					if (is_valid_stack_addr(thread_current()->user_rsp, addr)) {
+						page_addr += PGSIZE;
+						continue;
+					}
+					return false;
+				}                       
+				if (page != NULL && f->R.rax == SYS_READ && !page->writable)
 					return false;                        
 				page_addr += PGSIZE;
 			}
@@ -141,6 +153,7 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	struct thread *curr = thread_current ();
 	struct fd_entry *fde;
+	curr->user_rsp = f->rsp;
 	switch (f->R.rax) {
 		case SYS_HALT :
 			power_off();

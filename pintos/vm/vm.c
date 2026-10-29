@@ -181,7 +181,7 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr UNUSED) {
 	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
-	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true))
+	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, pg_round_down(addr), true))
 		return;
 }
 
@@ -207,11 +207,16 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 
 	struct page *page = spt_find_page(spt, addr);
 	/* stack growth인 경우 pml4와 spt에 등록되어 있지 않다. */
-	if (not_present && page == NULL && user) {
+	if (not_present && page == NULL) {
+		void *rsp;
+		if (user)
+			rsp = f->rsp;
+		else
+			rsp = thread_current()->user_rsp;
+
 		/* 접근 주소가 스택 범위 안에 있는 경우 stack growth*/
-		if ((void *)USER_STACK > addr && addr >= (char *)f->rsp - 8 && addr >= (void *)((char *)USER_STACK - (1<<20))) {
+		if (is_valid_stack_addr(rsp, addr)) 
 			vm_stack_growth(addr);
-		}
 	}
 
 	page = spt_find_page(spt, addr);
@@ -396,4 +401,11 @@ bool copy_file_info(struct page *dst, const struct page *src) {
 	dst->uninit.aux = file_info;
 
 	return true;
+}
+
+bool is_valid_stack_addr(void *rsp, void *va) {
+	return (void *)USER_STACK > va 
+			&& va >= (char *)rsp - 8 
+			&& va >= (void *)((char *)USER_STACK - (1<<20)
+		);
 }
