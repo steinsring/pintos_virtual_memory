@@ -181,9 +181,7 @@ __do_fork (void *aux) {
 
 	process_activate (current);
 	if (parent->exec_file != NULL) {
-		filesys_lock_acquire ();
 		current->exec_file = file_duplicate (parent->exec_file);
-		filesys_lock_release ();
 		if (current->exec_file == NULL)
 			goto error;
 	}
@@ -213,10 +211,8 @@ __do_fork (void *aux) {
 		struct fd_entry *fde = list_entry (e, struct fd_entry, elem);
 		fde_copy->fd = fde->fd;
 		fde_copy->is_stdin = fde->is_stdin;
-		filesys_lock_acquire ();
 		if (fde->file != NULL) {
 			fde_copy->file = file_duplicate (fde->file);
-			filesys_lock_release ();
 			if (fde_copy->file == NULL) {
 				free (fde_copy);
 				goto error;
@@ -224,7 +220,6 @@ __do_fork (void *aux) {
 		}
 		else {
 			fde_copy->file = NULL;
-			filesys_lock_release ();
 		}
 
 		list_insert_ordered (&current->fd_table, &fde_copy->elem, compare_fd, NULL);
@@ -341,7 +336,6 @@ process_exit (void) {
 		intr_set_level(old_level);
 	}
 
-	filesys_lock_acquire ();
 	while (!list_empty(fd_table)) {
 		int dup_cnt = 0;
 		struct list_elem *e = list_front (fd_table);
@@ -363,7 +357,6 @@ process_exit (void) {
 		file_close (fde->file);
 		free (fde);
 	}
-	filesys_lock_release ();
 	
 	self_ss = curr->ss;
 	process_cleanup ();
@@ -397,9 +390,7 @@ process_cleanup (void) {
 	if (curr->exec_file != NULL) {
 		struct file *file = curr->exec_file;
 		curr->exec_file = NULL;
-		filesys_lock_acquire ();
 		file_close (file);
-		filesys_lock_release ();
 	}
 
 	uint64_t *pml4;
@@ -509,8 +500,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	int argc = 0;
 	char *token;
 
-	bool fs_locked = false;
-
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -528,19 +517,15 @@ load (const char *file_name, struct intr_frame *if_) {
 		argv[argc++] = token;
 
 	/* Open executable file. */
-	filesys_lock_acquire ();
 	file = filesys_open (argv[0]);
 	if (file != NULL)
 		file_deny_write (file);
-	filesys_lock_release ();
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
 
 	/* Read and verify executable header. */
-	filesys_lock_acquire ();
-	fs_locked = true;
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
 			|| ehdr.e_type != 2
@@ -551,24 +536,18 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: error loading executable\n", argv[0]);
 		goto done;
 	}
-	filesys_lock_release ();
-	fs_locked = false;
 
 	/* Read program headers. */
 	file_ofs = ehdr.e_phoff;
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		filesys_lock_acquire ();
-		fs_locked = true;
 		if (file_ofs < 0 || file_ofs > file_length (file))
 			goto done;
 		file_seek (file, file_ofs);
 
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
-		filesys_lock_release ();
-		fs_locked = false;
 		file_ofs += sizeof phdr;
 		switch (phdr.p_type) {
 			case PT_NULL:
@@ -653,13 +632,9 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	if (fs_locked)
-		filesys_lock_release ();
 	
 	free (copy);
-	filesys_lock_acquire ();
 	file_close (file);
-	filesys_lock_release ();
 	return success;
 }
 
@@ -844,7 +819,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes);
 
 	//성공여부 반환
-	free(info);
 	return true;
 }
 

@@ -102,4 +102,6 @@ uint64_t hash_key(const struct hash_elem *e, void *aux);
 /* 키 비교 함수 */
 bool compare_key(const struct hash_elem *a,	const struct hash_elem *b, void *aux);
 
+void destructor (struct hash_elem *e, void *aux);
+
 #endif /* lib/kernel/hash.h */

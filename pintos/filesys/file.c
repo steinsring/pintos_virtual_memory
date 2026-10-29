@@ -17,15 +17,18 @@ struct file {
  * allocation fails or if INODE is null. */
 struct file *
 file_open (struct inode *inode) {
+	filesys_lock_acquire();
 	struct file *file = calloc (1, sizeof *file);
 	if (inode != NULL && file != NULL) {
 		file->inode = inode;
 		file->pos = 0;
 		file->deny_write = false;
+		filesys_lock_release();
 		return file;
 	} else {
 		inode_close (inode);
 		free (file);
+		filesys_lock_release();
 		return NULL;
 	}
 }
@@ -53,11 +56,13 @@ file_duplicate (struct file *file) {
 /* Closes FILE. */
 void
 file_close (struct file *file) {
+	filesys_lock_acquire();
 	if (file != NULL) {
 		file_allow_write (file);
 		inode_close (file->inode);
 		free (file);
 	}
+	filesys_lock_release();
 }
 
 /* Returns the inode encapsulated by FILE. */
@@ -73,8 +78,10 @@ file_get_inode (struct file *file) {
  * Advances FILE's position by the number of bytes read. */
 off_t
 file_read (struct file *file, void *buffer, off_t size) {
+	filesys_lock_acquire();
 	off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
 	file->pos += bytes_read;
+	filesys_lock_release();
 	return bytes_read;
 }
 
@@ -85,7 +92,15 @@ file_read (struct file *file, void *buffer, off_t size) {
  * The file's current position is unaffected. */
 off_t
 file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
-	return inode_read_at (file->inode, buffer, size, file_ofs);
+	bool filesys_lock = have_filesys_lock();
+	if (!filesys_lock)
+		filesys_lock_acquire();
+	
+	off_t bytes_read = inode_read_at (file->inode, buffer, size, file_ofs);
+
+	if (!filesys_lock)
+		filesys_lock_release();
+	return bytes_read;
 }
 
 /* Writes SIZE bytes from BUFFER into FILE,
@@ -97,8 +112,10 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
  * Advances FILE's position by the number of bytes read. */
 off_t
 file_write (struct file *file, const void *buffer, off_t size) {
+	filesys_lock_acquire();
 	off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
 	file->pos += bytes_written;
+	filesys_lock_release();
 	return bytes_written;
 }
 
@@ -112,7 +129,15 @@ file_write (struct file *file, const void *buffer, off_t size) {
 off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
 		off_t file_ofs) {
-	return inode_write_at (file->inode, buffer, size, file_ofs);
+	bool filesys_lock = have_filesys_lock();
+	if (!filesys_lock)
+		filesys_lock_acquire();
+		
+	off_t bytes_write = inode_write_at (file->inode, buffer, size, file_ofs);
+
+	if (!filesys_lock)
+		filesys_lock_release();
+	return bytes_write;
 }
 
 /* Prevents write operations on FILE's underlying inode
@@ -120,10 +145,12 @@ file_write_at (struct file *file, const void *buffer, off_t size,
 void
 file_deny_write (struct file *file) {
 	ASSERT (file != NULL);
+	filesys_lock_acquire();
 	if (!file->deny_write) {
 		file->deny_write = true;
 		inode_deny_write (file->inode);
 	}
+	filesys_lock_release();
 }
 
 /* Re-enables write operations on FILE's underlying inode.
@@ -142,7 +169,10 @@ file_allow_write (struct file *file) {
 off_t
 file_length (struct file *file) {
 	ASSERT (file != NULL);
-	return inode_length (file->inode);
+	filesys_lock_acquire();
+	off_t bytes_len = inode_length (file->inode);
+	filesys_lock_release();
+	return bytes_len;
 }
 
 /* Sets the current position in FILE to NEW_POS bytes from the
@@ -151,7 +181,9 @@ void
 file_seek (struct file *file, off_t new_pos) {
 	ASSERT (file != NULL);
 	ASSERT (new_pos >= 0);
+	filesys_lock_acquire();
 	file->pos = new_pos;
+	filesys_lock_release();
 }
 
 /* Returns the current position in FILE as a byte offset from the
@@ -178,4 +210,9 @@ filesys_lock_acquire (void) {
 void
 filesys_lock_release (void) {
 	lock_release (&filesys_lock);
+}
+
+bool
+have_filesys_lock() {
+	return filesys_lock.holder == thread_current();
 }

@@ -244,84 +244,30 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
-		page->frame = NULL;
-		palloc_free_page(frame->kva);
-		free(frame);
-		return false;
-	}
-
+	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) 
+		goto pml4_fail;
 
 	  /* 페이지 내용을 준비한다.
      * UNINIT 페이지라면 최초 초기화와 lazy loading이 수행된다. */
-    // if (!swap_in (page, frame->kva)) {
-    //     pml4_clear_page (thread_current ()->pml4, page->va);
-    //     page->frame = NULL;
-    //     palloc_free_page (frame->kva);
-    //     free (frame);
-    //     return false;
-    // }
+    if (!swap_in (page, frame->kva))
+        goto swap_in_fail;
 
-	return swap_in (page, frame->kva);
+	return true;
+
+swap_in_fail:
+	pml4_clear_page (thread_current ()->pml4, page->va);
+
+pml4_fail:
+	page->frame = NULL;
+	palloc_free_page (frame->kva);
+	free (frame);
+	return false;
 }
 
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	hash_init(&spt->spt_hash, hash_key, compare_key, NULL);
-}
-
-static bool
-page_duplicate (struct page *dst, const struct page *src){
-	const struct uninit_page *u = &src->uninit; 
-
-	if (VM_TYPE (src->operations->type) == VM_UNINIT) {
-		void *new_aux = NULL;
-
-		if (u->aux != NULL) {
-		 	struct file_info *old_info = (struct file_info *)u->aux;
-
-			struct file_info *new_info = (struct file_info *)malloc(sizeof(struct file_info));
-    
-           	if (new_info == NULL) {
-                return false;  
-			}
-
-			*new_info = *old_info;
-			new_info->file = file_reopen(old_info->file);
-
-			if (new_info->file == NULL) {
-				free (new_info);
-				return false;
-			}
-			new_aux = new_info;
-		}
-		uninit_new (dst, src->va, u->init, u->type, new_aux, u->page_initializer);
-		dst->writable = src->writable;
-		return true;
-	}
-
-	bool (*initializer)(struct page *, enum vm_type, void *) = NULL;
-    enum vm_type type = page_get_type(src); 
-	 
-    if (type == VM_ANON) {
-        initializer = anon_initializer;
-    } else if (type == VM_FILE) {
-        initializer = file_backed_initializer;
-    } else {
-        return false;
-    }
-
-	uninit_new(dst, src->va, NULL, type, NULL, initializer);
-    dst->writable = src->writable;
-
-    if (!vm_do_claim_page(dst)) {
-        return false;
-    }
-
-    memcpy(dst->frame->kva, src->frame->kva, PGSIZE);
-
-    return true;
 }
 
 /* Copy supplemental page table from src to dst */
@@ -352,17 +298,10 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 	return true;
 }
 
-//콜백 함수
-static void
-page_destroy (struct hash_elem *elem, void *aux UNUSED) {
-    struct page *page = hash_entry (elem, struct page, elem);
-    vm_dealloc_page (page);
-}
-
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt) {
-	hash_clear(&spt->spt_hash,page_destroy);
+supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+	hash_clear(&spt->spt_hash, destructor);
 }
 
 /* spt lock */
@@ -378,4 +317,72 @@ void spt_lock_acquire() {
 
 void spt_lock_release() {
 	lock_release(&spt_lock);
+}
+
+/* page 복제 */
+bool page_duplicate(struct page *dst, const struct page *src) {
+	*dst = *src;
+	if (src->frame != NULL) {
+		/* frame이 매핑되어있는 경우 할당 및 복제 */
+		struct frame *copy_frame = vm_get_frame();
+		if(copy_frame == NULL)
+			return false;
+
+		/* Set links */
+		copy_frame->page = dst;
+		dst->frame = copy_frame;
+
+		memcpy(copy_frame->kva, src->frame->kva, PGSIZE);
+
+		if(!pml4_set_page(thread_current()->pml4, dst->va, copy_frame->kva, dst->writable)) {
+			palloc_free_page(copy_frame->kva);
+			free(copy_frame);
+			dst->frame = NULL;
+			return false;
+		}
+		/* swap out일 때 나중에 고려*/
+	}
+
+	bool succ = false;
+	switch (src->operations->type) {
+		case VM_UNINIT:
+			if (src->uninit.aux != NULL)
+				succ = copy_file_info(dst, src);
+
+			if (dst->frame != NULL && !succ) {
+				dst->frame = NULL;
+				palloc_free_page(dst->frame->kva);
+				free(dst->frame);
+			}
+			break;
+		case VM_ANON:
+			succ = true;
+			break;
+		case VM_FILE:
+			succ = true;
+			break;
+		default:
+			break;
+	}
+
+	return succ;
+}
+
+bool copy_file_info(struct page *dst, const struct page *src) {
+	struct file_info *file_info = malloc(sizeof *file_info);
+	if (file_info == NULL)
+		return false;
+	
+	*file_info = *((struct file_info *)src->uninit.aux);
+
+	/* file_info안의 file 구조체 복제*/
+	file_info->file = file_duplicate(file_info->file);
+	if (file_info->file == NULL) {
+		free(file_info);
+		return false;
+	}
+
+	dst->uninit.aux = file_info;
+
+	return true;
 }
