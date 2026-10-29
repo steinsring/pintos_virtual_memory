@@ -48,9 +48,9 @@ static struct frame *vm_evict_frame (void);
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
-bool
 // 가상 페이지를 관리하겠다.
 // 페이지를 지금 RAM에 올리는 함수 X 나중에 준비할 페이지의 정보를 만들어 SPT에 등록하는 함수
+bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
@@ -61,6 +61,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct page *page = malloc (sizeof *page);
 	if (page==NULL)
 		return false;
+
 	/* Check whether the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		
@@ -271,23 +272,29 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src UNUSED) {
-	struct hash_iterator i;
-	hash_first(&i, &src->spt_hash);
-	/* 해시테이블을 순회해서 모든 페이지 복제 */
-	while (hash_next(&i) != NULL) {
-    	struct page *page = hash_entry(hash_cur(&i), struct page, elem);
-		struct page *copy_page = malloc(sizeof *page);
-		if (copy_page == NULL)
-			return false;
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
+	struct hash_iterator iter;
+    hash_first (&iter, &src->spt_hash);
+
+	while (hash_next (&iter) != NULL){
+		struct hash_elem *elem = hash_cur(&iter);
+		struct page *src_page = hash_entry (elem,struct page, elem);
+		struct page *dst_page = malloc (sizeof *dst_page);
+
+        if (dst_page == NULL) {
+            return false;
+        }
 		
-		if(!page_duplicate(copy_page, page)){
-			free (copy_page);
-			return false;
-		}
-		
-		hash_insert(&dst->spt_hash, &copy_page->elem);
-	}
+		if (!page_duplicate (dst_page, src_page)) {
+            free (dst_page);
+            return false;
+        }
+
+        if (!spt_insert_page (dst, dst_page)) {
+            vm_dealloc_page (dst_page);
+            return false;
+        }
+    }
 	return true;
 }
 
