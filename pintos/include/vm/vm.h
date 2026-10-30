@@ -123,4 +123,6 @@ void spt_lock_release();
 bool page_duplicate(struct page *dst, const struct page *src);
 bool copy_file_info(struct page *dst, const struct page *src);
 
+bool is_valid_stack_addr(void *rsp, void *va);
+
 #endif  /* VM_VM_H */

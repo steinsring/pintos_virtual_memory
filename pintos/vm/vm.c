@@ -193,21 +193,6 @@ static bool
 vm_handle_wp (struct page *page UNUSED) {
 }
 
-bool
-is_valid_stack_addr (void *rsp, void *va) {
-    uint64_t addr = (uint64_t) va;
-    uint64_t stack_pointer = (uint64_t) rsp;
-    uint64_t stack_limit = (uint64_t) USER_STACK - (1 << 20);
-
-    if (addr < stack_limit || addr >= (uint64_t) USER_STACK)
-        return false;
-
-    if (stack_pointer < 8 || addr < stack_pointer - 8)
-        return false;
-
-    return true;
-}
-
 /* Return true on success */
 //not_present 
 // - true: 페이지 테이블에 필요한 매핑이 없는 상황
@@ -416,4 +401,19 @@ bool copy_file_info(struct page *dst, const struct page *src) {
 	dst->uninit.aux = file_info;
 
 	return true;
+}
+
+bool
+is_valid_stack_addr (void *rsp, void *va) {
+    uint64_t addr = (uint64_t) va;
+    uint64_t stack_pointer = (uint64_t) rsp;
+    uint64_t stack_limit = (uint64_t) USER_STACK - (1 << 20);
+
+    if (addr < stack_limit || addr >= (uint64_t) USER_STACK)
+        return false;
+
+    if (stack_pointer < 8 || addr < stack_pointer - 8)
+        return false;
+
+    return true;
 }
