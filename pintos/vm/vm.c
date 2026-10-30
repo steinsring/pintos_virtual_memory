@@ -4,9 +4,9 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
-#include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "threads/synch.h"
+#include <string.h>
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -178,11 +178,14 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
-	/*uninit 페이지로 생성. 지금 쓰려고 init NULL로 넣어줌*/
-	if (!vm_alloc_page(VM_ANON | VM_MARKER_0, pg_round_down(addr), true))
-		return;
+static bool
+vm_stack_growth (void *addr) {
+	void *upage = pg_round_down (addr);
+
+    if (!vm_alloc_page (VM_ANON | VM_MARKER_0, upage, true))
+        return false;
+
+    return vm_claim_page (upage);
 }
 
 /* Handle the fault on write_protected page */
@@ -194,38 +197,35 @@ vm_handle_wp (struct page *page UNUSED) {
 //not_present 
 // - true: 페이지 테이블에 필요한 매핑이 없는 상황
 // - false : 매핑은 존재하지만 접근 권한등의 문제로 인해 발생한 fault
+// stack주소의 페이지가 없을때 기존 stack부터 현재 요청의 stack 사이는?
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user, bool write, bool not_present) {
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+                     bool user, bool write, bool not_present) {
+    struct thread *curr = thread_current ();
+    struct supplemental_page_table *spt = &curr->spt;
 
-	if(addr == NULL||is_kernel_vaddr (addr))
+    if (addr == NULL || is_kernel_vaddr (addr))
+        return false;
+
+    if (!not_present)
+        return false;
+
+    struct page *page = spt_find_page (spt, addr);
+
+	if (page == NULL){
+		void *rsp = user ? (void *) f->rsp : thread_current ()->user_rsp;
+		if (is_valid_stack_addr (rsp, addr))
+        	return vm_stack_growth (addr);
+
 		return false;
-
-	if (!not_present)
-		return false;
-
-	struct page *page = spt_find_page(spt, addr);
-	/* stack growth인 경우 pml4와 spt에 등록되어 있지 않다. */
-	if (not_present && page == NULL) {
-		void *rsp;
-		if (user)
-			rsp = f->rsp;
-		else
-			rsp = thread_current()->user_rsp;
-
-		/* 접근 주소가 스택 범위 안에 있는 경우 stack growth*/
-		if (is_valid_stack_addr(rsp, addr)) 
-			vm_stack_growth(addr);
 	}
 
-	page = spt_find_page(spt, addr);
-	
-	if (page == NULL||(write && !page->writable))
+	if (write && !page->writable)
 		return false;
 	
 	return vm_do_claim_page (page);
 }
+
 
 /* Free the page.
  * DO NOT MODIFY THIS FUNCTION. */
@@ -361,7 +361,7 @@ bool page_duplicate(struct page *dst, const struct page *src) {
 
 	bool succ = false;
 	switch (src->operations->type) {
-		case VM_UNINIT:
+		case VM_UNINIT: 
 			if (src->uninit.aux != NULL)
 				succ = copy_file_info(dst, src);
 
@@ -403,9 +403,17 @@ bool copy_file_info(struct page *dst, const struct page *src) {
 	return true;
 }
 
-bool is_valid_stack_addr(void *rsp, void *va) {
-	return (void *)USER_STACK > va 
-			&& va >= (char *)rsp - 8 
-			&& va >= (void *)((char *)USER_STACK - (1<<20)
-		);
+bool
+is_valid_stack_addr (void *rsp, void *va) {
+    uint64_t addr = (uint64_t) va;
+    uint64_t stack_pointer = (uint64_t) rsp;
+    uint64_t stack_limit = (uint64_t) USER_STACK - (1 << 20);
+
+    if (addr < stack_limit || addr >= (uint64_t) USER_STACK)
+        return false;
+
+    if (stack_pointer < 8 || addr < stack_pointer - 8)
+        return false;
+
+    return true;
 }
