@@ -140,6 +140,11 @@ count_open_file (struct fd_entry *target_fde) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	struct thread *curr = thread_current ();
+
+	#ifdef VM
+    curr->user_rsp = f->rsp;
+ 	#endif
+	
 	struct fd_entry *fde;
 	switch (f->R.rax) {
 		case SYS_HALT :

@@ -180,7 +180,9 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
-	addr
+	void *va = pg_round_down(addr);
+
+	va_alloc_page(VM_ANON | VM_MARKER_0, va, true);
 }
 
 /* Handle the fault on write_protected page */
@@ -195,27 +197,45 @@ vm_handle_wp (struct page *page UNUSED) {
 // stack주소의 페이지가 없을때 기존 stack부터 현재 요청의 stack 사이는?
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user, bool write, bool not_present) {
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+                     bool user, bool write, bool not_present) {
+    struct thread *curr = thread_current ();
+    struct supplemental_page_table *spt = &curr->spt;
 
-	if(addr==NULL||is_kernel_vaddr (addr)){
-		return false;
-	}
-
-	if (!not_present)
+    if (addr == NULL || is_kernel_vaddr (addr))
         return false;
 
-	struct page *page = spt_find_page(spt, addr);
-		
-	if (page == NULL||(write && !page->writable))
-		return false;
+    if (!not_present)
+        return false;
 
-	//stack 가상주소에 맞는 페이지만 할당해주면 댐.
-	if(addr >= f->rsp-8)
-		vm_stack_growth(addr);
-	
-	return vm_do_claim_page (page);
+    struct page *page = spt_find_page (spt, addr);
+
+    if (page == NULL) {
+        /* user_rsp는 추가하고 syscall_handler에서 저장할 필드 */
+        uintptr_t rsp = user ? (uintptr_t) f->rsp: (uintptr_t) curr->user_rsp;
+
+        uintptr_t fault_addr = (uintptr_t) addr;
+        uintptr_t stack_top = (uintptr_t) USER_STACK;
+        uintptr_t stack_limit = stack_top - (1 << 20);
+
+        if (rsp < 8
+            || fault_addr < rsp - 8
+            || fault_addr < stack_limit
+            || fault_addr >= stack_top)
+            return false;
+
+        vm_stack_growth (addr);
+
+        page = spt_find_page (spt, addr);
+        if (page == NULL)
+            return false;
+    }
+
+    if (write && !page->writable)
+        return false;
+
+    return vm_do_claim_page (page);
 }
+
 
 /* Free the page.
  * DO NOT MODIFY THIS FUNCTION. */
