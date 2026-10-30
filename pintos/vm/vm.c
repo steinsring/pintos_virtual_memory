@@ -217,6 +217,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
         uintptr_t stack_top = (uintptr_t) USER_STACK;
         uintptr_t stack_limit = stack_top - (1 << 20);
 
+		//스택은 낮은 주소. 기존 rsp-8 = 기존영역에서 8바이트 더 감.
         if (rsp < 8
             || fault_addr < rsp - 8
             || fault_addr < stack_limit
