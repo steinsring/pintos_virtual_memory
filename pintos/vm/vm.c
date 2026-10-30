@@ -4,9 +4,9 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
-#include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "threads/synch.h"
+#include <string.h>
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -178,8 +178,14 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+static bool
+vm_stack_growth (void *addr) {
+	void *upage = pg_round_down (addr);
+
+    if (!vm_alloc_page (VM_ANON | VM_MARKER_0, upage, true))
+        return false;
+
+    return vm_claim_page (upage);
 }
 
 /* Handle the fault on write_protected page */
@@ -187,10 +193,22 @@ static bool
 vm_handle_wp (struct page *page UNUSED) {
 }
 
+bool
+is_valid_stack_addr (void *rsp, void *va) {
+    uint64_t addr = (uint64_t) va;
+    uint64_t stack_pointer = (uint64_t) rsp;
+    uint64_t stack_limit = (uint64_t) USER_STACK - (1 << 20);
+
+    if (addr < stack_limit || addr >= (uint64_t) USER_STACK)
+        return false;
+
+    if (stack_pointer < 8 || addr < stack_pointer - 8)
+        return false;
+
+    return true;
+}
+
 /* Return true on success */
-//not_present 
-// - true: 페이지 테이블에 필요한 매핑이 없는 상황
-// - false : 매핑은 존재하지만 접근 권한등의 문제로 인해 발생한 fault
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user, bool write, bool not_present) {
@@ -205,7 +223,15 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 
 	struct page *page = spt_find_page(spt, addr);
 
-	if (page == NULL||(write && !page->writable))
+	if (page == NULL){
+		void *rsp = user ? (void *) f->rsp : thread_current ()->user_rsp;
+		if (is_valid_stack_addr (rsp, addr))
+        	return vm_stack_growth (addr);
+
+		return false;
+	}
+
+	if (write && !page->writable)
 		return false;
 	
 	return vm_do_claim_page (page);
