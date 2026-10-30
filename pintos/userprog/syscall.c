@@ -50,7 +50,19 @@ syscall_init (void) {
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
+static bool
+is_valid_stack_addr (void *rsp, void *va) {
+    uint64_t stack_ptr = (uint64_t) rsp;
+    uint64_t addr = (uint64_t) va;
 
+    if (addr < (USER_STACK - (1 << 20)) || addr >= USER_STACK)
+        return false;
+
+    if (stack_ptr < 8)
+        return false;
+
+    return addr >= stack_ptr - 8;
+}
 bool
 is_valid (struct intr_frame *f UNUSED) {
 	struct thread *curr = thread_current ();
@@ -73,29 +85,55 @@ is_valid (struct intr_frame *f UNUSED) {
 			break;
 		}
 
-		case SYS_READ :
-		case SYS_WRITE : {
-			/* buffer가 커널주소인가? */
-			if (f->R.rsi == NULL || is_kernel_vaddr (f->R.rsi))
+		case SYS_READ:
+		case SYS_WRITE: {
+			uint64_t start = f->R.rsi;
+			uint64_t len = f->R.rdx;
+
+			if (len == 0)
+				break;
+
+			/* NULL, 커널 주소 검사 */
+			if (start == 0 || start >= (uint64_t) KERN_BASE)
 				return false;
-			if ((uint64_t)KERN_BASE - f->R.rsi < f->R.rdx)
+
+			/* 버퍼 범위 초과 검사 */
+			if (len > (uint64_t) KERN_BASE - start)
 				return false;
-			uint64_t page_addr = pg_round_down (f->R.rsi);
-			while (page_addr <= pg_round_down (f->R.rsi + f->R.rdx - 1)) {
-				struct page *page = spt_find_page (&curr->spt, (void *) page_addr);
-				if (page == NULL)
-					return false;                       
-				if (f->R.rax == SYS_READ && !page->writable)
-					return false;                        
+
+			uint64_t end = start + len - 1;
+			uint64_t page_addr =
+				(uint64_t) pg_round_down ((void *) start);
+			uint64_t last_page_addr =
+				(uint64_t) pg_round_down ((void *) end);
+
+			while (page_addr <= last_page_addr) {
+				struct page *page =
+					spt_find_page (&curr->spt, (void *) page_addr);
+
+				if (page == NULL) {
+					/* SPT에 없는 페이지는 스택 증가 가능성 검사 */
+					uint64_t check_addr =
+						page_addr < start ? start : page_addr;
+
+					if (!is_valid_stack_addr (
+							curr->user_rsp, (void *) check_addr))
+						return false;
+				} else if (f->R.rax == SYS_READ && !page->writable) {
+					return false;
+				}
+
 				page_addr += PGSIZE;
 			}
+			break;
 		}
 
-		default :
+		default:
 			break;
 	}
 	return true;
 }
+
 
 void
 valid_handler (struct intr_frame *f) {
@@ -140,11 +178,8 @@ count_open_file (struct fd_entry *target_fde) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	struct thread *curr = thread_current ();
+	curr->user_rsp = (void *) f->rsp;
 
-	#ifdef VM
-    curr->user_rsp = f->rsp;
- 	#endif
-	
 	struct fd_entry *fde;
 	switch (f->R.rax) {
 		case SYS_HALT :

@@ -4,9 +4,9 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
-#include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "threads/synch.h"
+#include <string.h>
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -178,16 +178,34 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
-	void *va = pg_round_down(addr);
+static bool
+vm_stack_growth (void *addr) {
+	void *upage = pg_round_down (addr);
 
-	va_alloc_page(VM_ANON | VM_MARKER_0, va, true);
+    if (!vm_alloc_page (VM_ANON | VM_MARKER_0, upage, true))
+        return false;
+
+    return vm_claim_page (upage);
 }
 
 /* Handle the fault on write_protected page */
 static bool
 vm_handle_wp (struct page *page UNUSED) {
+}
+
+bool
+is_valid_stack_addr (void *rsp, void *va) {
+    uint64_t addr = (uint64_t) va;
+    uint64_t stack_pointer = (uint64_t) rsp;
+    uint64_t stack_limit = (uint64_t) USER_STACK - (1 << 20);
+
+    if (addr < stack_limit || addr >= (uint64_t) USER_STACK)
+        return false;
+
+    if (stack_pointer < 8 || addr < stack_pointer - 8)
+        return false;
+
+    return true;
 }
 
 /* Return true on success */
@@ -209,32 +227,18 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 
     struct page *page = spt_find_page (spt, addr);
 
-    if (page == NULL) {
-        /* user_rsp는 추가하고 syscall_handler에서 저장할 필드 */
-        uintptr_t rsp = user ? (uintptr_t) f->rsp: (uintptr_t) curr->user_rsp;
+	if (page == NULL){
+		void *rsp = user ? (void *) f->rsp : thread_current ()->user_rsp;
+		if (is_valid_stack_addr (rsp, addr))
+        	return vm_stack_growth (addr);
 
-        uintptr_t fault_addr = (uintptr_t) addr;
-        uintptr_t stack_top = (uintptr_t) USER_STACK;
-        uintptr_t stack_limit = stack_top - (1 << 20);
+		return false;
+	}
 
-		//스택은 낮은 주소. 기존 rsp-8 = 기존영역에서 8바이트 더 감.
-        if (rsp < 8
-            || fault_addr < rsp - 8
-            || fault_addr < stack_limit
-            || fault_addr >= stack_top)
-            return false;
-
-        vm_stack_growth (addr);
-
-        page = spt_find_page (spt, addr);
-        if (page == NULL)
-            return false;
-    }
-
-    if (write && !page->writable)
-        return false;
-
-    return vm_do_claim_page (page);
+	if (write && !page->writable)
+		return false;
+	
+	return vm_do_claim_page (page);
 }
 
 
