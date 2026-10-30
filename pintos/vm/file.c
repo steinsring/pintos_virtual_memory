@@ -16,7 +16,7 @@ static const struct page_operations file_ops = {
 
 /* The initializer of file vm */
 void
-vm_file_init (void) {
+vm_file_init (void) { 
 }
 
 /* Initialize the file backed page */

@@ -799,7 +799,7 @@ install_page (void *upage, void *kpage, bool writable) {
  * upper block. */
 
 //페이지랑 프레임 가진 페이지 만들어줌 -> 파일정보가 없음 -> 페이지 초기화할 때 파일 정보도 넣어줌
-static bool
+bool
 lazy_load_segment (struct page *page, void *aux) {
 	struct file_info *info = (struct file_info *)aux;
 	
