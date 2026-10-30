@@ -101,26 +101,6 @@ is_valid (struct intr_frame *f UNUSED) {
 			/* 버퍼 범위 초과 검사 */
 			if (len > (uint64_t) KERN_BASE - start)
 				return false;
-<<<<<<< HEAD
-			uint64_t page_addr = pg_round_down (f->R.rsi);
-			while (page_addr <= pg_round_down (f->R.rsi + f->R.rdx - 1)) {
-				struct page *page = spt_find_page (&curr->spt, (void *) page_addr);
-				if (page == NULL) {
-					void *addr;
-					if (f->R.rsi > page_addr)
-						addr = f->R.rsi;
-					else
-						addr = page_addr;
-					
-					if (is_valid_stack_addr(thread_current()->user_rsp, addr)) {
-						page_addr += PGSIZE;
-						continue;
-					}
-					return false;
-				}                       
-				if (page != NULL && f->R.rax == SYS_READ && !page->writable)
-					return false;                        
-=======
 
 			uint64_t end = start + len - 1;
 			uint64_t page_addr =
@@ -144,7 +124,6 @@ is_valid (struct intr_frame *f UNUSED) {
 					return false;
 				}
 
->>>>>>> origin/develop
 				page_addr += PGSIZE;
 			}
 			break;
