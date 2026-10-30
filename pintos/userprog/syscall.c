@@ -382,6 +382,21 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 
 		case SYS_MMAP :
+			void *adrr = (void*)f->R.rdi;
+			size_t length = (size_t) f->R.rsi;
+			int writable = (int) f->R.rdx;
+    		int fd = (int) f->R.r10;
+    		off_t offset = (off_t) f->R.r8;
+
+			if (!is_valid_mmap(addr, length));
+				break;
+			//fd가 어디에 들어있는지 레지스터 주소를 파악하지 못하고 있음.
+			if (!(fde = find_file_discriptor(curfd)))
+				break;
+
+			f->R.rax = do_mmap(addr, length, writable, fde->file, offset);
+			break;
+
 		case SYS_MUNMAP :
 		case SYS_CHDIR :
 		case SYS_MKDIR :
