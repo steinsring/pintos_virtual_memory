@@ -44,6 +44,12 @@ page_get_type (struct page *page) {
 static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
+struct mmap_entry {
+	void *start;
+	size_t page_count;
+	struct file *file;
+	struct list_elem elem;
+}
 
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
@@ -417,3 +423,4 @@ is_valid_stack_addr (void *rsp, void *va) {
 
     return true;
 }
+
