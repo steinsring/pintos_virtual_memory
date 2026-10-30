@@ -51,19 +51,7 @@ syscall_init (void) {
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
-static bool
-is_valid_stack_addr (void *rsp, void *va) {
-    uint64_t stack_ptr = (uint64_t) rsp;
-    uint64_t addr = (uint64_t) va;
 
-    if (addr < (USER_STACK - (1 << 20)) || addr >= USER_STACK)
-        return false;
-
-    /*if (stack_ptr < 8)
-       return false;*/
-
-    return addr >= stack_ptr - 8;
-}
 bool
 is_valid (struct intr_frame *f UNUSED) {
 	struct thread *curr = thread_current ();
