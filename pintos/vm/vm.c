@@ -209,19 +209,23 @@ is_valid_stack_addr (void *rsp, void *va) {
 }
 
 /* Return true on success */
+//not_present 
+// - true: 페이지 테이블에 필요한 매핑이 없는 상황
+// - false : 매핑은 존재하지만 접근 권한등의 문제로 인해 발생한 fault
+// stack주소의 페이지가 없을때 기존 stack부터 현재 요청의 stack 사이는?
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user, bool write, bool not_present) {
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+                     bool user, bool write, bool not_present) {
+    struct thread *curr = thread_current ();
+    struct supplemental_page_table *spt = &curr->spt;
 
-	if(addr==NULL||is_kernel_vaddr (addr)){
-		return false;
-	}
-
-	if (!not_present)
+    if (addr == NULL || is_kernel_vaddr (addr))
         return false;
 
-	struct page *page = spt_find_page(spt, addr);
+    if (!not_present)
+        return false;
+
+    struct page *page = spt_find_page (spt, addr);
 
 	if (page == NULL){
 		void *rsp = user ? (void *) f->rsp : thread_current ()->user_rsp;
@@ -236,6 +240,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 	
 	return vm_do_claim_page (page);
 }
+
 
 /* Free the page.
  * DO NOT MODIFY THIS FUNCTION. */
@@ -371,7 +376,7 @@ bool page_duplicate(struct page *dst, const struct page *src) {
 
 	bool succ = false;
 	switch (src->operations->type) {
-		case VM_UNINIT:
+		case VM_UNINIT: 
 			if (src->uninit.aux != NULL)
 				succ = copy_file_info(dst, src);
 

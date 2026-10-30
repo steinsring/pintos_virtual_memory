@@ -58,8 +58,8 @@ is_valid_stack_addr (void *rsp, void *va) {
     if (addr < (USER_STACK - (1 << 20)) || addr >= USER_STACK)
         return false;
 
-    if (stack_ptr < 8)
-        return false;
+    /*if (stack_ptr < 8)
+       return false;*/
 
     return addr >= stack_ptr - 8;
 }
