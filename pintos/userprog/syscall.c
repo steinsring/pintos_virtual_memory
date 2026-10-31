@@ -450,7 +450,8 @@ void
 	// file의 길이가 0이거나 0보다 작은 경우
 	if (file_length(fde->file) == 0 || (int)length <= 0)
 		return NULL;
-
+	
+	return do_mmap(addr, length, writable, fde->file, offset);
 }
 
 static bool
