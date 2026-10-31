@@ -383,23 +383,26 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 
 		case SYS_MMAP :
-			void *addr = (void*)f->R.rdi; // 첫번째 인자
-			size_t length = (size_t) f->R.rsi; // 두번째 인자
-			int writable = (int) f->R.rdx; // 세번째 인자
-    		int fd = (int) f->R.r10; // ?
-    		off_t offset = (off_t) f->R.r8; //?
+			// void *addr = (void*)f->R.rdi; // 첫번째 인자
+			// size_t length = (size_t) f->R.rsi; // 두번째 인자
+			// int writable = (int) f->R.rdx; // 세번째 인자
+    		// int fd = (int) f->R.r10; // ?
+    		// off_t offset = (off_t) f->R.r8; //?
 
-			if (!is_valid_mmap(addr, length))
-				break;
+			// if (!is_valid_mmap(addr, length))
+			// 	break;
 			
-			if (fd == 0 || fd == 1)
-				break;
+			// if (fd == 0 || fd == 1)
+			// 	break;
 
-			//fd가 어디에 들어있는지 레지스터 주소를 파악하지 못하고 있음.
-			if (!(fde = find_file_discriptor(fd)))
-				break;
+			// //fd가 어디에 들어있는지 레지스터 주소를 파악하지 못하고 있음.
+			// if (!(fde = find_file_discriptor(fd)))
+			// 	break;
 
-			f->R.rax = do_mmap(addr, length, writable, fde->file, offset);
+			// f->R.rax = do_mmap(addr, length, writable, fde->file, offset);
+			// break;
+
+			f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
 			break;
 
 		case SYS_MUNMAP :
@@ -419,11 +422,47 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	return;
 }
 
+void 
+*mmap (void *addr, size_t length, int writable, int fd, off_t offset){
+
+	// addr가 없거나 정렬이 되어있지 않을 때.
+	if (!addr || addr != pg_round_down(addr))
+		return NULL;
+	
+	// offset이 없거나 정렬되어 있지 않을 때.
+	if (!offset || offset != pg_round_down(offset))
+		return NULL;
+
+	// addr 또는 addr + length가 user 영역이 아닌 경우
+	if(!is_user_vaddr(addr) || !is_user_vaddr(addr+length))
+		return NULL;
+	
+	// addr에 할당된 페이지가 이미 존재하는 경우	
+	if (spt_find_page(&thread_current()->spt, addr))
+		return NULL;
+	
+	// fd에 해당하는 file이 없는 경우
+	struct fd_entry *fde = find_file_discriptor(fd); 
+
+	if (fde == NULL || fde->file == NULL)
+		return NULL;
+
+	// file의 길이가 0이거나 0보다 작은 경우
+	if (file_length(fde->file) == 0 || (int)length <= 0)
+		return NULL;
+
+}
+
 static bool
 is_vaild_mmap(const void *addr, const size_t length) {
 
+	uintptr_t 
+
+
 	if (is_valid_user_addr(addr) && is_valid_length(length) && !pg_ofs(addr))
 		return true;
+
+	
 	
 
 
