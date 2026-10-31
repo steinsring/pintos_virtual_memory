@@ -382,16 +382,20 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 
 		case SYS_MMAP :
-			void *adrr = (void*)f->R.rdi;
-			size_t length = (size_t) f->R.rsi;
-			int writable = (int) f->R.rdx;
-    		int fd = (int) f->R.r10;
-    		off_t offset = (off_t) f->R.r8;
+			void *addr = (void*)f->R.rdi; // 첫번째 인자
+			size_t length = (size_t) f->R.rsi; // 두번째 인자
+			int writable = (int) f->R.rdx; // 세번째 인자
+    		int fd = (int) f->R.r10; // ?
+    		off_t offset = (off_t) f->R.r8; //?
 
-			if (!is_valid_mmap(addr, length));
+			if (!is_valid_mmap(addr, length))
 				break;
+			
+			if (fd == 0 || fd == 1)
+				break;
+
 			//fd가 어디에 들어있는지 레지스터 주소를 파악하지 못하고 있음.
-			if (!(fde = find_file_discriptor(curfd)))
+			if (!(fde = find_file_discriptor(fd)))
 				break;
 
 			f->R.rax = do_mmap(addr, length, writable, fde->file, offset);
@@ -412,4 +416,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 	}
 	return;
+}
+
+static bool
+is_vaild_mmap(const void *addr, const size_t length) {
+	
+	if (is_valid_user_addr(addr) && is_valid_length(length) && !pg_ofs(addr))
+		return true;
+
+	return false;
+
 }
