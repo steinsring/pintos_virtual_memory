@@ -20,6 +20,7 @@
 #include "threads/malloc.h"
 #include "threads/init.h"
 #include "vm/vm.h"
+#include "threads/vaddr.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -420,9 +421,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 static bool
 is_vaild_mmap(const void *addr, const size_t length) {
-	
+
 	if (is_valid_user_addr(addr) && is_valid_length(length) && !pg_ofs(addr))
 		return true;
+	
+
 
 	return false;
 
